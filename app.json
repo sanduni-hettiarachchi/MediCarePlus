@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "MediCare+",
+    "slug": "medicareplus",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "backgroundColor": "#EAF6EF",
+      "resizeMode": "contain"
+    },
+    "android": {
+      "package": "com.medicareplus.app",
+      "permissions": [
+        "CAMERA",
+        "POST_NOTIFICATIONS"
+      ]
+    },
+    "plugins": [
+      "expo-camera",
+      "expo-notifications"
+    ]
+  }
+}

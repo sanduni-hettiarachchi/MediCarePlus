@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isUserRole(role) {
+      return signedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+    function isDoctor() { return isUserRole('doctor'); }
+    function isNurse() { return isUserRole('nurse'); }
+    function isPharmacist() { return isUserRole('pharmacist'); }
+    function isCaregiver() { return isUserRole('caregiver'); }
+    function isPatient(patientId) { return isUserRole('patient') && request.auth.uid == patientId; }
+    function isLinkedCaregiver(patientId) {
+      return isCaregiver() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.patientId == patientId;
+    }
+    function isOwnerOrCaregiver(patientId) { return isPatient(patientId) || isLinkedCaregiver(patientId); }
+    function hasActiveConsent(patientId) {
+      return signedIn() && exists(/databases/$(database)/documents/consents/$(patientId + '_doctor')) &&
+        get(/databases/$(database)/documents/consents/$(patientId + '_doctor')).data.status == 'Active' &&
+        get(/databases/$(database)/documents/consents/$(patientId + '_doctor')).data.expiresAt > request.time.toMillis();
+    }
+    function hasPharmacistConsent(patientId) {
+      return signedIn() && exists(/databases/$(database)/documents/consents/$(patientId + '_pharmacist')) &&
+        get(/databases/$(database)/documents/consents/$(patientId + '_pharmacist')).data.status == 'Active' &&
+        get(/databases/$(database)/documents/consents/$(patientId + '_pharmacist')).data.expiresAt > request.time.toMillis();
+    }
+    function canReadPatient(patientId) {
+      return isOwnerOrCaregiver(patientId) || ((isDoctor() || isNurse()) && hasActiveConsent(patientId));
+    }
+    function pharmacistStockUpdate() {
+      return isPharmacist() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['stockDays', 'refillStatus']);
+    }
+    function pharmacistRefillUpdate() {
+      return isPharmacist() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'refilledBy', 'refilledByName', 'pharmacyName', 'refilledAt']);
+    }
+    function canManageConsent(patientId, scope) {
+      return isPatient(patientId) || (isLinkedCaregiver(patientId) && !(scope in ['doctor', 'pharmacist']));
+    }
+
+    // USERS (read is open to signed-in users: known limitation, see report)
+    match /users/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.role in ['patient', 'caregiver'] &&
+        !(request.resource.data.role == 'caregiver' &&
+          request.resource.data.get('patientId', null) != null);
+      allow update: if signedIn() && request.auth.uid == userId &&
+        request.resource.data.role == resource.data.role &&
+        !(resource.data.role == 'caregiver' &&
+          request.resource.data.diff(resource.data).affectedKeys().hasAny(['patientId']));
+    }
+
+    match /medicines/{medicineId} {
+      allow read: if canReadPatient(resource.data.patientId) ||
+        (isPharmacist() && hasPharmacistConsent(resource.data.patientId));
+      allow create: if isOwnerOrCaregiver(request.resource.data.patientId);
+      allow update: if (isOwnerOrCaregiver(resource.data.patientId) && request.resource.data.patientId == resource.data.patientId) ||
+        (pharmacistStockUpdate() && hasPharmacistConsent(resource.data.patientId));
+      allow delete: if isOwnerOrCaregiver(resource.data.patientId);
+    }
+
+    match /reminder_times/{timeId} {
+      allow read: if canReadPatient(resource.data.patientId);
+      allow create: if isOwnerOrCaregiver(request.resource.data.patientId);
+      allow update: if isOwnerOrCaregiver(resource.data.patientId) && request.resource.data.patientId == resource.data.patientId;
+      allow delete: if isOwnerOrCaregiver(resource.data.patientId);
+    }
+
+    match /dose_logs/{logId} {
+      allow read: if canReadPatient(resource.data.patientId);
+      allow create: if isOwnerOrCaregiver(request.resource.data.patientId);
+      allow update: if isOwnerOrCaregiver(resource.data.patientId) && request.resource.data.patientId == resource.data.patientId;
+      allow delete: if isOwnerOrCaregiver(resource.data.patientId);
+    }
+
+    match /consents/{consentId} {
+      allow get: if isOwnerOrCaregiver(resource.data.patientId) ||
+        request.auth.uid == resource.data.get('granteeId', '') ||
+        ((isDoctor() || isNurse()) && resource.data.get('scope', '') == 'doctor') ||
+        (isPharmacist() && resource.data.get('scope', '') == 'pharmacist');
+      allow list: if isOwnerOrCaregiver(resource.data.patientId) ||
+        request.auth.uid == resource.data.get('granteeId', '');
+      allow create: if canManageConsent(request.resource.data.patientId, request.resource.data.get('scope', ''));
+      allow update: if canManageConsent(resource.data.patientId, resource.data.get('scope', '')) &&
+        request.resource.data.patientId == resource.data.patientId;
+      allow delete: if canManageConsent(resource.data.patientId, resource.data.get('scope', ''));
+    }
+
+    match /alerts/{alertId} {
+      allow read: if isOwnerOrCaregiver(resource.data.patientId);
+      allow create: if isOwnerOrCaregiver(request.resource.data.patientId);
+      allow update: if isOwnerOrCaregiver(resource.data.patientId) && request.resource.data.patientId == resource.data.patientId;
+      allow delete: if isOwnerOrCaregiver(resource.data.patientId);
+    }
+
+    match /refill_requests/{requestId} {
+      allow read: if isOwnerOrCaregiver(resource.data.patientId) ||
+        ((isDoctor() || isNurse()) && hasActiveConsent(resource.data.patientId)) ||
+        (isPharmacist() && hasPharmacistConsent(resource.data.patientId));
+      allow create: if isOwnerOrCaregiver(request.resource.data.patientId) ||
+        (isPharmacist() && hasPharmacistConsent(request.resource.data.patientId) && request.resource.data.status == 'refilled');
+      allow update: if (isOwnerOrCaregiver(resource.data.patientId) && request.resource.data.patientId == resource.data.patientId) ||
+        (pharmacistRefillUpdate() && hasPharmacistConsent(resource.data.patientId));
+      allow delete: if isOwnerOrCaregiver(resource.data.patientId);
+    }
+
+    match /care_notes/{noteId} {
+      allow read: if !isPharmacist() && canReadPatient(resource.data.patientId);
+      allow create: if request.resource.data.authorId == request.auth.uid && (
+        isOwnerOrCaregiver(request.resource.data.patientId) ||
+        ((isDoctor() || isNurse()) && hasActiveConsent(request.resource.data.patientId))
+      );
+      allow update: if request.auth.uid == resource.data.authorId && (
+        isOwnerOrCaregiver(resource.data.patientId) ||
+        (isNurse() && hasActiveConsent(resource.data.patientId)) ||
+        (isDoctor() && hasActiveConsent(resource.data.patientId))
+      );
+      allow delete: if request.auth.uid == resource.data.authorId && (
+        isOwnerOrCaregiver(resource.data.patientId) ||
+        (isNurse() && hasActiveConsent(resource.data.patientId)) ||
+        (isDoctor() && hasActiveConsent(resource.data.patientId))
+      );
+    }
+
+    match /prescriptions/{prescriptionId} {
+      allow read: if canReadPatient(resource.data.patientId);
+      allow create: if signedIn() && request.resource.data.addedBy == request.auth.uid &&
+        request.resource.data.status == 'active' &&
+        ((isPatient(request.resource.data.patientId) && request.resource.data.addedByRole == 'patient') ||
+         (isLinkedCaregiver(request.resource.data.patientId) && request.resource.data.addedByRole == 'caregiver') ||
+         (isDoctor() && hasActiveConsent(request.resource.data.patientId) && request.resource.data.addedByRole == 'doctor'));
+      allow update: if isOwnerOrCaregiver(resource.data.patientId) && request.resource.data.patientId == resource.data.patientId;
+      allow delete: if isOwnerOrCaregiver(resource.data.patientId);
+    }
+
+    match /access_logs/{logId} {
+      allow create: if request.resource.data.granteeId == request.auth.uid && (
+        ((isDoctor() || isNurse()) && hasActiveConsent(request.resource.data.patientId)) ||
+        (isPharmacist() && hasPharmacistConsent(request.resource.data.patientId))
+      );
+      allow read: if isOwnerOrCaregiver(resource.data.patientId);
+      allow update, delete: if false;
+    }
+  }
+}

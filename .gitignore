@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+.env
+.env.local
+*.lognode_modules
+serviceAccountKey.json
+
+node_modules/
+.env
+.expo/
