@@ -3,9 +3,5 @@ node_modules/
 dist/
 .env
 .env.local
-*.lognode_modules
+*.log
 serviceAccountKey.json
-
-node_modules/
-.env
-.expo/
