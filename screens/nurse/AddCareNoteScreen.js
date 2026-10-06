@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import {
   ScrollView,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
@@ -10,9 +9,7 @@ import {
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
-import PatientText from '../../components/PatientText';
-
-const Text = PatientText;
+import Text from '../../components/PatientText';
 
 export default function AddCareNoteScreen({ navigation, route }) {
   const patient = route?.params?.patient || { name: 'Mrs. Perera', id: 'usr-patient-1' };

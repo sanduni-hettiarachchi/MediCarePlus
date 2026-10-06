@@ -82,7 +82,11 @@ export default function NurseProfileScreen({ navigation, route, onLogout }) {
 
   const handleConfirmLogout = async () => {
     setShowLogoutSheet(false);
-    await authService.logout(navigation);
+    if (onLogout) {
+      onLogout();
+    } else {
+      await authService.logout(navigation);
+    }
   };
 
   return (
@@ -164,7 +168,7 @@ export default function NurseProfileScreen({ navigation, route, onLogout }) {
                 <Text style={styles.label}>NURSE ID</Text>
                 <View style={styles.lockedField}>
                   <TextInput
-                    style={[styles.input, styles.lockedInput]]
+                    style={[styles.input, styles.lockedInput]}
                     value={nurseId}
                     editable={false}
                   />

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -36,7 +35,9 @@ export default function PatientHistoryScreen({ navigation, route }) {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - days);
 
-    const filtered = doseLogs.filter(log => {
+    // Filter by period and sort newest first
+    const sortedLogs = [...doseLogs].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    const filtered = sortedLogs.filter(log => {
       const logDate = new Date(log.timestamp || Date.now());
       return logDate >= cutoffDate;
     });
@@ -66,17 +67,24 @@ export default function PatientHistoryScreen({ navigation, route }) {
     setGroupedLogs(grouped);
   }, [doseLogs, selectedPeriod]);
 
-  const getStatusStyle = (status) => {
+  const getStatusBgStyle = (status) => {
     const s = String(status).toLowerCase();
-    if (s === 'taken') return styles.statusTaken;
-    if (s === 'missed' || s === 'skipped') return styles.statusMissed;
-    return styles.statusSkipped;
+    if (s === 'taken') return styles.statusTakenBg;
+    if (s === 'missed') return styles.statusMissedBg;
+    return styles.statusSkippedBg;
+  };
+
+  const getStatusTextStyle = (status) => {
+    const s = String(status).toLowerCase();
+    if (s === 'taken') return styles.statusTakenText;
+    if (s === 'missed') return styles.statusMissedText;
+    return styles.statusSkippedText;
   };
 
   const getStatusText = (status) => {
     const s = String(status).toLowerCase();
-    if (s === 'taken') return 'Taken';
-    if (s === 'missed') return 'Missed';
+    if (s === 'taken') return '✓ Taken';
+    if (s === 'missed') return '× Missed';
     if (s === 'skipped') return 'Skipped';
     return status;
   };
@@ -119,10 +127,10 @@ export default function PatientHistoryScreen({ navigation, route }) {
                 <View key={log.id || idx} style={styles.logRow}>
                   <View style={styles.logInfo}>
                     <Text style={styles.medicineName}>{log.medicineName || 'Medicine'}</Text>
-                    <Text style={styles.doseInfo}>{log.dose || '—'} · {log.time || '—'}</Text>
+                    <Text style={styles.doseInfo}>{log.dose || 'Standard dose'} · {log.time || 'Today'}</Text>
                   </View>
-                  <View style={[styles.statusTag, getStatusStyle(log.status)]}>
-                    <Text style={[styles.statusText, getStatusStyle(log.status)]}>
+                  <View style={[styles.statusTag, getStatusBgStyle(log.status)]}>
+                    <Text style={[styles.statusText, getStatusTextStyle(log.status)]}>
                       {getStatusText(log.status)}
                     </Text>
                   </View>
@@ -222,26 +230,26 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 8,
   },
-  statusTaken: {
+  statusTakenBg: {
     backgroundColor: '#D1FAE5',
   },
-  statusMissed: {
+  statusMissedBg: {
     backgroundColor: '#FEE2E2',
   },
-  statusSkipped: {
+  statusSkippedBg: {
     backgroundColor: '#FEF3C7',
   },
   statusText: {
     fontSize: 12,
     fontWeight: '700',
   },
-  statusTaken: {
+  statusTakenText: {
     color: '#065F46',
   },
-  statusMissed: {
+  statusMissedText: {
     color: '#991B1B',
   },
-  statusSkipped: {
+  statusSkippedText: {
     color: '#92400E',
   },
 });

@@ -3,15 +3,12 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
-import PatientText from '../../components/PatientText';
-
-const Text = PatientText;
+import Text from '../../components/PatientText';
 
 export default function PatientCareNotesScreen({ navigation, route, currentUser }) {
   const patientId = currentUser?.id || 'usr-patient-1';

@@ -1,8 +1,9 @@
 import React, { Component, useEffect, useRef, useState } from 'react';
-import { Platform, SafeAreaView, StatusBar, StyleSheet, View, Text } from 'react-native';
+import { Platform, SafeAreaView, StatusBar, StyleSheet, TouchableOpacity, View, Text } from 'react-native';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { onAuthStateChanged } from 'firebase/auth';
 import dbService from './services/db';
+import authService from './services/authService';
 import { getFirebaseServices } from './firebase/firebaseConfig';
 import { LanguageProvider } from './i18n/LanguageContext';
 import { ThemeProvider } from './contexts/ThemeContext';
@@ -28,6 +29,7 @@ import MyPrescriptionsScreen from './screens/patient/MyPrescriptionsScreen';
 import NotificationsScreen from './screens/patient/NotificationsScreen';
 import PatientHistoryScreen from './screens/nurse/PatientHistoryScreen';
 import PatientProfileScreen from './screens/patient/PatientProfileScreen';
+import PatientActivityScreen from './screens/patient/PatientActivityScreen';
 import PatientCareNotesScreen from './screens/patient/PatientCareNotesScreen';
 import ReminderAlertScreen from './screens/patient/ReminderAlertScreen';
 import ShareWithDoctorScreen from './screens/patient/ShareWithDoctorScreen';
@@ -37,6 +39,7 @@ import AdherenceCalendarScreen from './screens/caregiver/AdherenceCalendarScreen
 import CallOutcomeLogScreen from './screens/caregiver/CallOutcomeLogScreen';
 import CaregiverActivityScreen from './screens/caregiver/CaregiverActivityScreen';
 import CaregiverInsightsScreen from './screens/caregiver/CaregiverInsightsScreen';
+import CaregiverPendingRequestsScreen from './screens/caregiver/CaregiverPendingRequestsScreen';
 import CaregiverProfilesScreen from './screens/caregiver/CaregiverProfilesScreen';
 import ManageLinkedCaregiversScreen from './screens/caregiver/ManageLinkedCaregiversScreen';
 import ManagePatientScheduleScreen from './screens/caregiver/ManagePatientScheduleScreen';
@@ -50,11 +53,10 @@ import PatientVisitsScreen from './screens/doctor/PatientVisitsScreen';
 import PrescriptionsRefillsScreen from './screens/doctor/PrescriptionsRefillsScreen';
 import RefillStatusScreen from './screens/doctor/RefillStatusScreen';
 import ScanQRCodeScreen from './screens/doctor/ScanQRCodeScreen';
-import AddCareNoteScreen from './screens/nurse/AddCareNoteScreen';
 import EditCareNoteScreen from './screens/nurse/EditCareNoteScreen';
-import InviteNurseScreen from './screens/nurse/InviteNurseScreen';
 import NurseMyPatientsScreen from './screens/nurse/NurseMyPatientsScreen';
 import NursePatientDetailScreen from './screens/nurse/NursePatientDetailScreen';
+import NursePendingRequestsScreen from './screens/nurse/NursePendingRequestsScreen';
 import NurseProfileScreen from './screens/nurse/NurseProfileScreen';
 import NurseSignInScreen from './screens/nurse/NurseSignInScreen';
 import PharmacistPatientMedicinesScreen from './screens/pharmacist/PharmacistPatientMedicinesScreen';
@@ -81,7 +83,7 @@ class ErrorBoundary extends Component {
         <View style={styles.errorContainer}>
           <Text style={styles.errorTitle}>Something went wrong</Text>
           <Text style={styles.errorMessage}>{this.state.error?.message || 'An unexpected error occurred'}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => window.location.reload()}>
+          <TouchableOpacity style={styles.retryButton} onPress={() => { if (typeof window !== 'undefined' && window.location) { window.location.reload(); } else { console.log('Reload requested'); } }}>
             <Text style={styles.retryButtonText}>Reload App</Text>
           </TouchableOpacity>
         </View>
@@ -248,11 +250,11 @@ export default function App() {
       case 'MyPrescriptions': return <MyPrescriptionsScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'AddPrescription': return <AddPrescriptionScreen navigation={navigation} currentUser={currentUser} />;
       case 'CaregiverProfiles': return <CaregiverProfilesScreen navigation={navigation} onNavigateTab={handleNavigateTab} onLogout={handleLogout} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} currentUser={currentUser} />;
+      case 'CaregiverPendingRequests': return <CaregiverPendingRequestsScreen navigation={navigation} currentUser={currentUser} onNavigateTab={handleNavigateTab} />;
       case 'CaregiverActivity': return <CaregiverActivityScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} currentUser={currentUser} />;
       case 'CallOutcomeLog': return <CallOutcomeLogScreen navigation={navigation} route={route} />;
       case 'ManagePatientSchedule': return <ManagePatientScheduleScreen navigation={navigation} onNavigateTab={handleNavigateTab} hasAlertBadge={hasUnhandledAlert} />;
       case 'ManageLinkedCaregivers': return <ManageLinkedCaregiversScreen navigation={navigation} currentUser={currentUser} />;
-        case 'ManageLinkedCaregivers': return <ManageLinkedCaregiversScreen navigation={navigation} currentUser={currentUser} />;
       case 'RefillNotification': return <RefillNotificationScreen navigation={navigation} route={route} onNavigateTab={handleNavigateTab} hasAlertBadge={hasUnhandledAlert} />;
       case 'CaregiverInsights': return <CaregiverInsightsScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} />;
       case 'AdherenceCalendar': return <AdherenceCalendarScreen navigation={navigation} />;
@@ -273,6 +275,7 @@ export default function App() {
       case 'PatientHistory': return <PatientHistoryScreen navigation={navigation} route={route} />;
       case 'InviteNurse': return <InviteNurseScreen navigation={navigation} />;
       case 'NurseProfile': return <NurseProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
+      case 'NursePendingRequests': return <NursePendingRequestsScreen navigation={navigation} currentUser={currentUser} />;
       case 'PharmacistPatientMedicines': return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} />;
       case 'PharmacistProfile': return <PharmacistProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
       case 'RefillSummary': return <RefillSummaryScreen navigation={navigation} route={route} />;

@@ -2,15 +2,12 @@ import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
-import PatientText from '../../components/PatientText';
-
-const Text = PatientText;
+import Text from '../../components/PatientText';
 
 export default function PatientActivityScreen({ navigation, currentUser }) {
   const patientId = currentUser?.id || 'usr-patient-1';

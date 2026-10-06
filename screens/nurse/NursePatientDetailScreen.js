@@ -9,6 +9,7 @@ import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 import PatientText from '../../components/PatientText';
+import { computeAdherenceStats } from '../../utils/dateUtils';
 
 const Text = PatientText;
 
@@ -17,7 +18,12 @@ export default function NursePatientDetailScreen({ navigation, route }) {
   const patientId = patient.id || route?.params?.patientId || 'usr-patient-1';
   const nurse = route?.params?.nurse;
   const [careNotes, setCareNotes] = useState([]);
-  const [summary, setSummary] = useState({ adherence: 0, mostMissedMedicine: '—', mostMissedTimeOfDay: '—', mostMissedCount: 0, dailyData: [] });
+  const [summary, setSummary] = useState({
+    adherencePercent: 0,
+    mostMissedMedName: '—',
+    mostMissedCount: 0,
+    dailyStats: [],
+  });
 
   const loadCareNotes = () => {
     const list = dbService.getCareNotes(patientId);
@@ -28,28 +34,26 @@ export default function NursePatientDetailScreen({ navigation, route }) {
 
   useEffect(() => {
     loadCareNotes();
-  }, []);
+  }, [patientId]);
 
-  useEffect(() => dbService.subscribeToDoseLogs(patientId, (logs) => {
-    const summaryData = dbService.getAdherenceSummary(patientId, logs);
-    // Compute daily adherence for the chart
-    const dailyData = computeDailyAdherence(logs);
-    setSummary({ ...summaryData, dailyData });
-  }), [patientId]);
+  useEffect(() => {
+    const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
+      const medicines = dbService.getMedicines(patientId);
+      const stats = computeAdherenceStats(logs, medicines, 7);
+      setSummary(stats);
+    });
+    return () => unsubscribe();
+  }, [patientId]);
 
   const [deletedNote, setDeletedNote] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
 
   const handleDeleteNote = async (note) => {
-    // Store for undo
     setDeletedNote(note);
     dbService.deleteCareNote(note.id);
     setShowUndoToast(true);
-    
-    // Reload notes
     loadCareNotes();
     
-    // Auto-dismiss after 6 seconds
     setTimeout(() => {
       setShowUndoToast(false);
       setDeletedNote(null);
@@ -65,36 +69,6 @@ export default function NursePatientDetailScreen({ navigation, route }) {
     }
   };
 
-  const computeDailyAdherence = (logs) => {
-    const days = [];
-    const dayNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-    
-    for (let i = 6; i >= 0; i--) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      const dateStr = date.toDateString();
-      
-      const dayLogs = logs.filter(log => {
-        const logDate = new Date(log.timestamp || Date.now());
-        return logDate.toDateString() === dateStr;
-      });
-      
-      const taken = dayLogs.filter(log => ['taken', 'completed'].includes(String(log.status).toLowerCase())).length;
-      const missed = dayLogs.filter(log => ['missed', 'skipped'].includes(String(log.status).toLowerCase())).length;
-      const total = taken + missed;
-      const adherence = total > 0 ? (taken / total) * 100 : 0;
-      const hasMissed = missed > 0;
-      
-      days.push({
-        day: dayNames[date.getDay()],
-        height: total > 0 ? `${Math.max(20, adherence)}%` : '0%',
-        missed: hasMissed,
-      });
-    }
-    
-    return days;
-  };
-
   return (
     <View style={styles.container}>
       <Header
@@ -106,31 +80,29 @@ export default function NursePatientDetailScreen({ navigation, route }) {
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <View style={styles.summaryBanner}>
-          {summary.dailyData.length > 0 ? (
-            <Text style={styles.summaryBannerText}>Adherence {summary.adherence}% this week · Most missed: {summary.mostMissedMedicine} ({summary.mostMissedTimeOfDay})</Text>
-          ) : (
-            <Text style={styles.summaryBannerText}>No data yet</Text>
-          )}
+          <Text style={styles.summaryBannerText}>
+            Adherence {summary.adherencePercent}% this week · Most missed: {summary.mostMissedMedName}
+          </Text>
         </View>
 
         <View style={styles.adherenceCard}>
           <Text style={styles.adherenceLabel}>LAST 7 DAYS ADHERENCE</Text>
-          <Text style={styles.adherenceValue}>{summary.dailyData.length > 0 ? `${summary.adherence}%` : 'No data yet'}</Text>
+          <Text style={styles.adherenceValue}>{summary.adherencePercent}%</Text>
 
           {/* 7-Day Bar Chart */}
           <View style={styles.barChartContainer}>
-            {summary.dailyData.map((bar, i) => (
+            {summary.dailyStats.map((bar, i) => (
               <View key={i} style={styles.barCol}>
                 <View style={styles.barTrack}>
                   <View
                     style={[
                       styles.barFill,
-                      { height: bar.height },
-                      bar.missed && styles.barFillMissed,
+                      { height: `${Math.max(bar.percentage, 15)}%` },
+                      bar.percentage < 50 && styles.barFillMissed,
                     ]}
                   />
                 </View>
-                <Text style={styles.barDayText}>{bar.day}</Text>
+                <Text style={styles.barDayText}>{bar.dayName}</Text>
               </View>
             ))}
           </View>
@@ -144,8 +116,8 @@ export default function NursePatientDetailScreen({ navigation, route }) {
               <View style={styles.missedRow}>
                 <Text style={styles.missedIcon}>⚠️</Text>
                 <View style={styles.missedCol}>
-                  <Text style={styles.missedMedName}>{summary.mostMissedMedicine}</Text>
-                  <Text style={styles.missedMedSub}>{summary.mostMissedCount} missed doses · {summary.mostMissedTimeOfDay}</Text>
+                  <Text style={styles.missedMedName}>{summary.mostMissedMedName}</Text>
+                  <Text style={styles.missedMedSub}>{summary.mostMissedCount} missed doses this week</Text>
                 </View>
               </View>
             </View>
@@ -184,7 +156,7 @@ export default function NursePatientDetailScreen({ navigation, route }) {
 
         {careNotes.length === 0 ? <Text style={styles.emptyNotes}>No care notes yet.</Text> : null}
         {careNotes.map((cn) => {
-          const isAuthor = cn.authorId === nurse?.nurseId || cn.authorId === 'usr-nurse-1';
+          const isAuthor = cn.authorId === nurse?.nurseId || cn.authorId === 'usr-nurse-1' || cn.authorId === nurse?.id;
           return (
             <View key={cn.id} style={styles.noteCard}>
               <View style={styles.noteTopRow}>
@@ -249,39 +221,41 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   adherenceValue: {
-    fontSize: 40,
-    fontWeight: '900',
-    color: '#007AFF',
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#1E40AF',
     marginBottom: 16,
   },
   barChartContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    height: 100,
     alignItems: 'flex-end',
-    height: 90,
+    justifyContent: 'space-between',
   },
   barCol: {
     flex: 1,
     alignItems: 'center',
+    height: '100%',
+    justifyContent: 'flex-end',
   },
   barTrack: {
-    width: 14,
-    height: 64,
+    width: 12,
+    height: 80,
     backgroundColor: '#DBEAFE',
-    borderRadius: 7,
-    justifyContent: 'flex-end',
+    borderRadius: 6,
     overflow: 'hidden',
+    justifyContent: 'flex-end',
   },
   barFill: {
     width: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 7,
+    backgroundColor: '#2563EB',
+    borderRadius: 6,
   },
   barFillMissed: {
-    backgroundColor: '#EF4444',
+    backgroundColor: '#DC2626',
   },
   barDayText: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '700',
     color: '#64748B',
     marginTop: 6,
@@ -291,117 +265,115 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#94A3B8',
     letterSpacing: 0.5,
+    marginTop: 16,
     marginBottom: 10,
-    marginTop: 4,
   },
   missedCard: {
     backgroundColor: '#FEF2F2',
-    borderRadius: 16,
-    padding: 14,
-    borderWidth: 1,
     borderColor: '#FCA5A5',
-    marginBottom: 20,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 16,
   },
   missedRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   missedIcon: {
-    fontSize: 22,
-    marginRight: 10,
+    fontSize: 20,
+    marginRight: 12,
   },
   missedCol: {
     flex: 1,
   },
   missedMedName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#991B1B',
   },
   missedMedSub: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#7F1D1D',
     marginTop: 2,
   },
   actionsRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
+    gap: 12,
+    marginBottom: 16,
   },
   actionBtn: {
     flex: 1,
-    marginBottom: 0,
   },
   noteCard: {
     backgroundColor: '#F8FAFC',
     borderRadius: 14,
     padding: 14,
-    marginBottom: 10,
+    marginBottom: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
   noteTopRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4,
+    marginBottom: 6,
   },
   noteAuthor: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#007AFF',
+    color: '#0F172A',
   },
   noteDate: {
-    fontSize: 11,
-    color: '#94A3B8',
+    fontSize: 12,
+    color: '#64748B',
   },
   noteText: {
     fontSize: 14,
-    color: '#1E293B',
-    lineHeight: 18,
+    color: '#334155',
+    lineHeight: 20,
   },
   editedLabel: {
     fontSize: 11,
-    color: '#64748B',
+    color: '#94A3B8',
     fontStyle: 'italic',
     marginTop: 4,
   },
   noteActions: {
     flexDirection: 'row',
     gap: 16,
-    marginTop: 8,
+    marginTop: 10,
   },
   actionLink: {
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#007AFF',
   },
   deleteLink: {
     color: '#EF4444',
   },
   readOnlyText: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#94A3B8',
-    fontStyle: 'italic',
     marginTop: 8,
   },
   undoToast: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: '#0F172A',
-    borderRadius: 12,
+    backgroundColor: '#1E293B',
+    borderRadius: 10,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginBottom: 16,
   },
   undoToastText: {
-    fontSize: 14,
     color: '#FFFFFF',
+    fontSize: 14,
     fontWeight: '600',
   },
   undoLink: {
+    color: '#38BDF8',
     fontSize: 14,
     fontWeight: '700',
-    color: '#FFFFFF',
   },
 });
