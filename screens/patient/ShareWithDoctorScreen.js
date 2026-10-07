@@ -121,7 +121,7 @@ export default function ShareWithDoctorScreen({ navigation, currentUser }) {
   };
 
   const qrPayload = JSON.stringify({
-    qrCode: consentRecord?.qrCode,
+    accessCode: consentRecord?.accessCode || accessCode,
     patientId,
     patientName,
     scope,
