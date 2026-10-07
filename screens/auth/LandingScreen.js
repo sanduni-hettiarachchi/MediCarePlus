@@ -19,7 +19,7 @@ export default function LandingScreen({ navigation, onSelectRole }) {
     } else if (selectedRole === 'doctor') {
       navigation?.navigate('DoctorSignIn');
     } else {
-      navigation?.navigate('Login');
+      navigation?.navigate('Login', { role: selectedRole });
     }
   };
 

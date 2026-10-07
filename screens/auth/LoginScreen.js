@@ -11,8 +11,9 @@ import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 
-export default function LoginScreen({ navigation, onLoginSuccess }) {
-  const [activeRole, setActiveRole] = useState('patient'); // 'patient' or 'caregiver'
+export default function LoginScreen({ navigation, onLoginSuccess, route }) {
+  const routeRole = route?.params?.role;
+  const [activeRole, setActiveRole] = useState(routeRole === 'caregiver' ? 'caregiver' : 'patient');
   const [emailOrPhone, setEmailOrPhone] = useState('maya.perera@email.com');
   const [password, setPassword] = useState('password123');
   const [hasError, setHasError] = useState(false);
@@ -140,7 +141,7 @@ export default function LoginScreen({ navigation, onLoginSuccess }) {
 
         <View style={styles.signUpRow}>
           <Text style={styles.signUpQuestion}>Don't have an account? </Text>
-          <TouchableOpacity onPress={() => navigation?.navigate('SignUp')}>
+          <TouchableOpacity onPress={() => navigation?.navigate('SignUp', { role: activeRole })}>
             <Text style={styles.signUpLink}>Sign up</Text>
           </TouchableOpacity>
         </View>

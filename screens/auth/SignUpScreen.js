@@ -25,6 +25,32 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
 
   const accountRole = role;
 
+  // Filter available roles based on route param
+  const getAvailableRoles = () => {
+    if (routeRole === 'patient' || routeRole === 'caregiver') {
+      return [
+        { key: 'patient', label: 'Patient' },
+        { key: 'caregiver', label: 'Caregiver' },
+      ];
+    }
+    if (routeRole === 'doctor' || routeRole === 'pharmacist') {
+      return [
+        { key: 'doctor', label: 'Doctor' },
+        { key: 'pharmacist', label: 'Pharmacist' },
+      ];
+    }
+    // Show all roles if no specific route role (default behavior)
+    return [
+      { key: 'patient', label: 'Patient' },
+      { key: 'caregiver', label: 'Caregiver' },
+      { key: 'nurse', label: 'Nurse' },
+      { key: 'doctor', label: 'Doctor' },
+      { key: 'pharmacist', label: 'Pharmacist' },
+    ];
+  };
+
+  const availableRoles = getAvailableRoles();
+
   const handleCreateAccount = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
       setErrorMsg('Name, email, and password are required.');
@@ -181,13 +207,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>I AM A</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleRow}>
-            {[
-              { key: 'patient', label: 'Patient' },
-              { key: 'caregiver', label: 'Caregiver' },
-              { key: 'nurse', label: 'Nurse' },
-              { key: 'doctor', label: 'Doctor' },
-              { key: 'pharmacist', label: 'Pharmacist' },
-            ].map((item) => (
+            {availableRoles.map((item) => (
               <TouchableOpacity
                 key={item.key}
                 style={[styles.roleChip, role === item.key && styles.selectedRoleChip]}
