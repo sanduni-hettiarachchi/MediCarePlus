@@ -245,8 +245,8 @@ export default function App() {
       case 'AccessibilityDisplay': return <AccessibilityDisplayScreen navigation={navigation} userPreferences={userPreferences} currentUser={currentUser} onSavePreferences={setUserPreferences} />;
       case 'ShareWithDoctor': return <ShareWithDoctorScreen navigation={navigation} currentUser={currentUser} />;
       case 'ManageAccess': return <ManageAccessScreen navigation={navigation} currentUser={currentUser} />;
-      case 'InviteCaregiver': return <InviteCaregiverScreen navigation={navigation} />;
-      case 'InviteNurse': return <InviteNurseScreen navigation={navigation} />;
+      case 'InviteCaregiver': return <InviteCaregiverScreen navigation={navigation} route={route} currentUser={currentUser} />;
+      case 'InviteNurse': return <InviteNurseScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'MyPrescriptions': return <MyPrescriptionsScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'AddPrescription': return <AddPrescriptionScreen navigation={navigation} currentUser={currentUser} />;
       case 'CaregiverProfiles': return <CaregiverProfilesScreen navigation={navigation} onNavigateTab={handleNavigateTab} onLogout={handleLogout} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} currentUser={currentUser} />;
