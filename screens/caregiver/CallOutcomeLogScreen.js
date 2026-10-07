@@ -10,48 +10,75 @@ import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 
-export default function CallOutcomeLogScreen({ navigation, route }) {
+export default function CallOutcomeLogScreen({ navigation, route, currentUser }) {
   const alert = route?.params?.alert;
-  const [noteText, setNoteText] = useState('Patient said she took her afternoon dose late at 1:30 PM.');
+  const patientId = route?.params?.patientId || alert?.patientId || 'usr-patient-1';
+  const patientName = route?.params?.patientName || alert?.patientName || 'Mrs. Perera';
+  const medicineName = route?.params?.medicineName || alert?.medicineName || alert?.medicine || 'Medicine';
+
+  const [noteText, setNoteText] = useState('');
   const [pastNotes, setPastNotes] = useState([]);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
 
   const loadNotes = () => {
-    const list = dbService.getCareNotes();
+    const list = dbService.getCareNotes(patientId);
     setPastNotes(list);
   };
 
   useEffect(() => {
     loadNotes();
-  }, []);
+    const stopSubscribe = dbService.subscribeToCareNotes?.(patientId, setPastNotes, (err) => {
+      console.error('CallOutcomeLogScreen care notes error:', err);
+    });
+    return () => stopSubscribe?.();
+  }, [patientId]);
 
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!noteText.trim()) return;
 
-    dbService.addCareNote({
-      authorRole: 'Caregiver',
-      note: noteText.trim(),
-    });
+    setErrorMsg('');
+    try {
+      await dbService.addCareNote({
+        patientId,
+        authorId: currentUser?.id || 'usr-caregiver-1',
+        authorName: currentUser?.name || 'Caregiver',
+        authorRole: 'Caregiver',
+        note: noteText.trim(),
+        medicineName,
+      });
 
-    if (alert) {
-      dbService.markAlertHandled(alert.id);
+      if (alert?.id) {
+        await dbService.markAlertHandled(alert.id, currentUser?.id);
+      }
+
+      setSavedSuccess(true);
+      setNoteText('');
+      loadNotes();
+      setTimeout(() => {
+        setSavedSuccess(false);
+        navigation?.goBack();
+      }, 1000);
+    } catch (error) {
+      console.error('CallOutcomeLogScreen handleSave ERROR:', error, error?.code, error?.message);
+      setErrorMsg(`Failed to save outcome note [${error?.code || 'unknown'}]: ${error?.message || error}. Please try again.`);
     }
-
-    setSavedSuccess(true);
-    setNoteText('');
-    loadNotes();
-    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   return (
     <View style={styles.container}>
       <Header
         title="Call Outcome Log"
-        subtitle="Record call outcome for Mrs. Perera"
+        subtitle={`Record call outcome for ${patientName}`}
         onBack={() => navigation?.goBack()}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {errorMsg ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{errorMsg}</Text>
+          </View>
+        ) : null}
         {savedSuccess && (
           <View style={styles.successBanner}>
             <Text style={styles.successText}>✓ Outcome note saved successfully!</Text>
@@ -108,6 +135,20 @@ const styles = StyleSheet.create({
   },
   successText: {
     color: '#0D8F7A',
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 10,
+  },
+  errorBannerText: {
+    color: '#EF4444',
     fontSize: 14,
     fontWeight: '700',
     textAlign: 'center',

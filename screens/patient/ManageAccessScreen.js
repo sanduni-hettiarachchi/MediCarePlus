@@ -18,7 +18,7 @@ import { useT } from '../../i18n/LanguageContext';
 export default function ManageAccessScreen({ navigation, currentUser }) {
   const t = useT();
   const patientId = currentUser?.id || 'usr-patient-1';
-  const [consents, setConsents] = useState([]);
+  const [accessLinks, setAccessLinks] = useState([]);
   const [targetConsent, setTargetConsent] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [undoBackup, setUndoBackup] = useState(null);
@@ -29,7 +29,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
   const [editPermissions, setEditPermissions] = useState({});
 
   useEffect(() => {
-    return dbService.subscribeToCareLinks(patientId, (list) => setConsents(list.filter((item) => item.status !== 'Revoked')));
+    return dbService.subscribeToCareLinks(patientId, 'patient', (list) => setAccessLinks(list.filter((item) => item.status !== 'Revoked')));
   }, [patientId]);
 
   const handleOpenRemoveSheet = (consentItem) => {
@@ -45,7 +45,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
     const backup = await dbService.removeCareLink(targetConsent.id);
     setUndoBackup(backup);
     setSnackbarMsg(t('removedAccess', { name: targetConsent.memberName }));
-    setConsents((current) => current.filter((item) => item.id !== targetConsent.id));
+    setAccessLinks((current) => current.filter((item) => item.id !== targetConsent.id));
   };
 
   const handleUndoRemove = async () => {
@@ -53,7 +53,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
       await dbService.restoreCareLink(undoBackup);
       setUndoBackup(null);
       setSnackbarMsg('');
-      setConsents((current) => [...current, undoBackup]);
+      setAccessLinks((current) => [...current, undoBackup]);
     }
   };
 
@@ -65,7 +65,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
   const handleSavePermissions = async () => {
     if (!editingLink) return;
     await dbService.updateCareLink(editingLink.id, { permissions: editPermissions });
-    setConsents((current) => current.map((c) => c.id === editingLink.id ? { ...c, permissions: editPermissions } : c));
+    setAccessLinks((current) => current.map((c) => c.id === editingLink.id ? { ...c, permissions: editPermissions } : c));
     setEditingLink(null);
     setEditPermissions({});
   };
@@ -87,7 +87,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
         {/* Caregivers Section */}
         <Text style={styles.sectionHeader}>CAREGIVERS</Text>
         <View style={styles.listCard}>
-          {consents.filter(c => c.role === 'caregiver').map((item) => (
+          {accessLinks.filter(c => c.role === 'caregiver').map((item) => (
             <View key={item.id} style={styles.rowItem}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
@@ -120,7 +120,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
               </View>
             </View>
           ))}
-          {consents.filter(c => c.role === 'caregiver').length === 0 && (
+          {accessLinks.filter(c => c.role === 'caregiver').length === 0 && (
             <Text style={styles.emptyText}>No caregivers added yet</Text>
           )}
         </View>
@@ -128,7 +128,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
         {/* Nurses Section */}
         <Text style={styles.sectionHeader}>NURSES</Text>
         <View style={styles.listCard}>
-          {consents.filter(c => c.role === 'nurse').map((item) => (
+          {accessLinks.filter(c => c.role === 'nurse').map((item) => (
             <View key={item.id} style={styles.rowItem}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
@@ -149,7 +149,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
               </TouchableOpacity>
             </View>
           ))}
-          {consents.filter(c => c.role === 'nurse').length === 0 && (
+          {accessLinks.filter(c => c.role === 'nurse').length === 0 && (
             <Text style={styles.emptyText}>No nurses added yet</Text>
           )}
         </View>
@@ -157,7 +157,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
         {/* Doctors & Pharmacists Section */}
         <Text style={styles.sectionHeader}>DOCTORS & PHARMACISTS</Text>
         <View style={styles.listCard}>
-          {consents.filter(c => c.role === 'doctor' || c.role === 'pharmacist').map((item) => (
+          {accessLinks.filter(c => c.role === 'doctor' || c.role === 'pharmacist').map((item) => (
             <View key={item.id} style={styles.rowItem}>
               <View style={styles.avatar}>
                 <Text style={styles.avatarText}>
@@ -179,7 +179,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
               </TouchableOpacity>
             </View>
           ))}
-          {consents.filter(c => c.role === 'doctor' || c.role === 'pharmacist').length === 0 && (
+          {accessLinks.filter(c => c.role === 'doctor' || c.role === 'pharmacist').length === 0 && (
             <Text style={styles.emptyText}>No doctors or pharmacists have scanned your QR code yet</Text>
           )}
         </View>

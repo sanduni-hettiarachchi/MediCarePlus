@@ -119,6 +119,13 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
 
         <Button title="Sign in securely" onPress={handleSignIn} style={styles.signInBtn} />
 
+        <View style={styles.signUpRow}>
+          <Text style={styles.signUpQuestion}>Don't have an account? </Text>
+          <TouchableOpacity onPress={() => navigation?.navigate('SignUp', { role: selectedRole })}>
+            <Text style={styles.signUpLink}>Sign up as a {selectedRole === 'doctor' ? 'Doctor' : 'Pharmacist'}</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={styles.noticeBox}>
           <Text style={styles.noticeText}>
             {selectedRole === 'doctor'
@@ -205,7 +212,22 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
   signInBtn: {
-    marginBottom: 16,
+    marginBottom: 14,
+  },
+  signUpRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  signUpQuestion: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  signUpLink: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0D8F7A',
   },
   noticeBox: {
     backgroundColor: '#FEF2F2',

@@ -50,8 +50,14 @@ export default function YourMedicinesScreen({
 
   // Refresh when screen gains focus
   useEffect(() => {
-    const unsubscribe = navigation?.addListener('focus', loadMedicines);
-    return () => unsubscribe?.();
+    if (typeof navigation?.addListener === 'function') {
+      const unsubscribe = navigation.addListener('focus', loadMedicines);
+      return () => {
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
+      };
+    }
   }, [navigation, patientId]);
 
   // Calculate active reminders based on actual times

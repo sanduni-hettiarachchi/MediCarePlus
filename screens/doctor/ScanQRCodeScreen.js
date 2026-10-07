@@ -24,59 +24,64 @@ export default function ScanQRCodeScreen({ navigation, route }) {
   const [scopeMismatch, setScopeMismatch] = useState(false);
   const [otherScope, setOtherScope] = useState('doctor');
 
-  const handleBarcodeScanned = async ({ data }) => {
-    if (scanned) return;
-    setScanned(true);
+  const [manualError, setManualError] = useState('');
 
-    let parsedQrCode = data;
-    let qrExpiresAt = null;
+  const handleVerifyCodeOrQr = async (data) => {
+    setManualError('');
+    const verification = await dbService.verifyAccessCode(data, doctor.role || 'doctor');
 
-    try {
-      if (data.startsWith('{')) {
-        const obj = JSON.parse(data);
-        parsedQrCode = obj.qrCode || data;
-        qrExpiresAt = obj.expiresAt;
+    if (!verification.valid) {
+      if (verification.reason === 'scope_mismatch') {
+        setShowManualModal(false);
+        setOtherScope(verification.accessCode?.scope || (doctor.role === 'doctor' ? 'pharmacist' : 'doctor'));
+        setScopeMismatch(true);
+        return;
       }
-    } catch (e) {
-      // String format
-    }
-
-    const verification = await dbService.verifyConsentQR(parsedQrCode, doctor.role);
-
-    if (verification.reason === 'scope_mismatch') {
-      setOtherScope(verification.consent?.scope || (doctor.role === 'doctor' ? 'pharmacist' : 'doctor'));
-      setScopeMismatch(true);
+      if (verification.reason === 'expired') {
+        setShowManualModal(false);
+        setIsExpired(true);
+        return;
+      }
+      setManualError('This code is no longer valid or was not found.');
       return;
     }
 
-    if (verification.consent && verification.consent.status === 'Revoked') {
-      setIsRevoked(true);
-      return;
-    }
+    const ac = verification.accessCode || {};
+    const patientId = ac.patientId || 'usr-patient-1';
+    const patientUser = dbService.getUserById(patientId);
+    const patientName = patientUser?.name || 'Mrs. Perera';
 
-    if (verification.reason === 'expired' || (qrExpiresAt && Date.now() > qrExpiresAt)) {
-      setIsExpired(true);
-      return;
-    }
+    await dbService.createGrant(patientId, doctor.id || doctor.slmcNumber || 'doc-1', doctor.role || 'doctor', doctor.role || 'doctor', ac.id || 'ac-1');
 
-    // Log the access to access_logs collection
     await dbService.addAccessLog({
-      patientId: verification.consent.patientId,
+      patientId,
       granteeId: doctor.id || doctor.slmcNumber || 'unknown',
-      granteeRole: doctor.role,
+      granteeRole: doctor.role || 'doctor',
       scope: doctor.role === 'pharmacist' ? 'pharmacist' : 'doctor',
     });
 
+    setShowManualModal(false);
+    setManualError('');
+    setManualCode('');
     navigation?.navigate('AccessGranted', {
       doctor,
-      patientId: verification.consent.patientId,
-      patientName: verification.consent.patientName || 'Mrs. Perera',
+      patientId,
+      patientName,
     });
   };
 
-  const handleManualSubmit = () => {
-    setShowManualModal(false);
-    handleBarcodeScanned({ data: manualCode || 'PATIENT-PERERA-QR-DOC' });
+  const handleBarcodeScanned = async ({ data }) => {
+    if (scanned) return;
+    setScanned(true);
+    await handleVerifyCodeOrQr(data);
+  };
+
+  const handleManualSubmit = async () => {
+    if (!manualCode.trim()) {
+      setManualError('Please enter an access code.');
+      return;
+    }
+    await handleVerifyCodeOrQr(manualCode.trim());
   };
 
   return (
@@ -129,7 +134,7 @@ export default function ScanQRCodeScreen({ navigation, route }) {
         <Button
           title="Enter code manually"
           variant="outline"
-          onPress={() => setShowManualModal(true)}
+          onPress={() => { setManualError(''); setShowManualModal(true); }}
           style={styles.manualBtn}
         />
       </View>
@@ -139,17 +144,20 @@ export default function ScanQRCodeScreen({ navigation, route }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Enter Access Code</Text>
-            <Text style={styles.modalSub}>Type the 6-digit access code from patient app</Text>
+            <Text style={styles.modalSub}>Type the 8-character access code from patient app (e.g. K7M-4Q9X)</Text>
+
+            {manualError ? <Text style={styles.manualErrorText}>{manualError}</Text> : null}
 
             <TextInput
               style={styles.input}
               value={manualCode}
-              onChangeText={setManualCode}
-              placeholder="e.g. PATIENT-PERERA-QR-DOC"
+              onChangeText={(txt) => { setManualCode(txt); setManualError(''); }}
+              placeholder="e.g. K7M-4Q9X"
+              autoCapitalize="characters"
             />
 
             <Button title="Verify and Access" onPress={handleManualSubmit} style={styles.modalSubmitBtn} />
-            <Button title="Cancel" variant="outline" onPress={() => setShowManualModal(false)} />
+            <Button title="Cancel" variant="outline" onPress={() => { setShowManualModal(false); setManualError(''); }} />
           </View>
         </View>
       </Modal>
@@ -336,6 +344,12 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#64748B',
     marginBottom: 16,
+  },
+  manualErrorText: {
+    fontSize: 13,
+    color: '#EF4444',
+    fontWeight: '600',
+    marginBottom: 12,
   },
   input: {
     borderWidth: 1,

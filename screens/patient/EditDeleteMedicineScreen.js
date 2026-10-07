@@ -48,9 +48,9 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
     setNewTimeInput('');
   };
 
-  const handleSaveChanges = () => {
+  const handleSaveChanges = async () => {
     if (!name.trim() || !dose.trim() || times.length === 0) return;
-    dbService.updateMedicine(medicineId, {
+    await dbService.updateMedicine(medicineId, {
       name: name.trim(),
       dose: dose.trim(),
       mealInstruction: selectedInstruction,
@@ -59,18 +59,17 @@ export default function EditDeleteMedicineScreen({ navigation, route }) {
     navigation?.navigate('YourMedicines');
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     setShowDeleteModal(false);
-    setUndoData(dbService.deleteMedicine(medicineId));
+    const res = await dbService.deleteMedicine(medicineId);
+    setUndoData(res);
     setSnackbarMsg(t('deletedMedicine', { name }));
     
     // Auto-dismiss after 6 seconds
     setTimeout(() => {
-      if (undoData) {
-        setSnackbarMsg('');
-        setUndoData(null);
-        navigation?.navigate('YourMedicines');
-      }
+      setSnackbarMsg('');
+      setUndoData(null);
+      navigation?.navigate('YourMedicines');
     }, 6000);
   };
 

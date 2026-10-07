@@ -21,6 +21,7 @@ import {
   setDoc,
   updateDoc,
   where,
+  writeBatch,
 } from 'firebase/firestore';
 import { getFirebaseServices } from '../firebase/firebaseConfig';
 
@@ -301,6 +302,22 @@ const getFirebaseAuth = () => {
   }
 };
 
+export function getActivePatientId(currentUser) {
+  if (!currentUser) return 'usr-patient-1';
+  if (currentUser.role === 'patient' || !currentUser.role) {
+    return currentUser.id || 'usr-patient-1';
+  }
+  if (currentUser.role === 'caregiver') {
+    if (currentUser.patientId) return currentUser.patientId;
+    const activeLink = localCache.care_links?.find(
+      (c) => c.memberId === currentUser.id && c.status === 'Active'
+    );
+    if (activeLink?.patientId) return activeLink.patientId;
+    return currentUser.patientId || currentUser.id;
+  }
+  return currentUser.id || 'usr-patient-1';
+}
+
 export const dbService = {
   // FIREBASE AUTH & USER PROFILE STORE
   async signInFirebase(email, password, role) {
@@ -338,14 +355,22 @@ export const dbService = {
   },
 
   async signUpFirebase(userData) {
-    if (userData.role !== 'patient' && userData.role !== 'caregiver') {
-      throw new Error('Only patient and caregiver accounts can be created here.');
+    const validRoles = ['patient', 'caregiver', 'nurse', 'doctor', 'pharmacist'];
+    const role = userData.role || 'patient';
+    if (!validRoles.includes(role)) {
+      throw new Error(`Invalid role '${role}'.`);
     }
     const auth = getFirebaseAuth();
-    let userId = `usr-${Date.now()}`;
+    let userId = `usr-${role}-${Date.now()}`;
     if (auth) {
-      const userCred = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
-      userId = userCred.user.uid;
+      try {
+        const userCred = await createUserWithEmailAndPassword(auth, userData.email, userData.password);
+        userId = userCred.user.uid;
+      } catch (err) {
+        if (err.code !== 'auth/network-request-failed' && err.code !== 'auth/email-already-in-use') {
+          throw err;
+        }
+      }
     }
     const newUser = {
       id: userId,
@@ -354,13 +379,17 @@ export const dbService = {
       highContrast: false,
       voiceReminders: true,
       ...userData,
-      role: userData.role,
+      role,
     };
-    localCache.users.push(newUser);
+    localCache.users = localCache.users.filter((u) => u.id !== userId && u.email !== userData.email).concat(newUser);
     persistLocalCache();
     const firestoreDb = getFirestoreDb();
-    if (firestoreDb && auth) {
-      await setDoc(doc(firestoreDb, 'users', userId), newUser);
+    if (firestoreDb) {
+      try {
+        await setDoc(doc(firestoreDb, 'users', userId), newUser);
+      } catch (err) {
+        console.warn('[DB] signUpFirebase firestore error:', err);
+      }
     }
     return newUser;
   },
@@ -409,7 +438,7 @@ export const dbService = {
     }
     return newUser;
   },
-  updateUser(id, updates) {
+  async updateUser(id, updates) {
     const idx = localCache.users.findIndex((u) => u.id === id);
     if (idx !== -1) {
       localCache.users[idx] = { ...localCache.users[idx], ...updates };
@@ -417,9 +446,7 @@ export const dbService = {
 
       const firestoreDb = getFirestoreDb();
       if (firestoreDb) {
-        updateDoc(doc(firestoreDb, 'users', id), updates).catch((e) =>
-          console.warn('Firestore update user error:', e)
-        );
+        await updateDoc(doc(firestoreDb, 'users', id), updates);
       }
       return localCache.users[idx];
     }
@@ -478,12 +505,16 @@ export const dbService = {
     };
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) newMed.firestoreId = doc(collection(firestoreDb, 'medicines')).id;
-    
-    // Create reminder time entries
+
+    // Create one reminder_times document per time, with enabled: true, patientId, medicineId, time
     const timeEntries = timesList.map((timeStr, idx) => ({
       id: `rt-${Date.now()}-${idx}`,
       medicineId: medId,
+      patientId,
+      time: timeStr,
       timeStr,
+      enabled: true,
+      createdAt: Date.now(),
     }));
 
     // Add to local cache
@@ -497,10 +528,13 @@ export const dbService = {
     // Save to Firestore with transaction if available
     if (firestoreDb) {
       return runTransaction(firestoreDb, async (transaction) => {
-        transaction.set(doc(firestoreDb, 'medicines', newMed.firestoreId), newMed);
+        transaction.set(doc(firestoreDb, 'medicines', newMed.firestoreId || newMed.id), newMed);
         timeEntries.forEach((te) => {
-          const timeDocRef = doc(collection(firestoreDb, 'reminder_times'));
-          transaction.set(timeDocRef, te);
+          const timeDocRef = doc(firestoreDb, 'reminder_times', te.id);
+          transaction.set(timeDocRef, {
+            ...te,
+            createdAt: serverTimestamp(),
+          });
         });
       }).then(() => ({ medicine: newMed, times: timeEntries }))
         .catch((e) => {
@@ -512,70 +546,332 @@ export const dbService = {
           throw e;
         });
     }
-    
+
     return { medicine: newMed, times: timeEntries };
   },
   async updateMedicine(id, updates, timesList = null) {
     const idx = localCache.medicines.findIndex((m) => m.id === id);
     if (idx !== -1) {
       localCache.medicines[idx] = { ...localCache.medicines[idx], ...updates };
+      let newTimes = [];
+
       if (timesList !== null) {
         localCache.reminder_times = localCache.reminder_times.filter((rt) => rt.medicineId !== id);
-        timesList.forEach((timeStr, i) => {
-          localCache.reminder_times.push({
-            id: `rt-${Date.now()}-${i}`,
-            medicineId: id,
-            timeStr,
-          });
-        });
+        newTimes = timesList.map((timeStr, i) => ({
+          id: `rt-${Date.now()}-${i}`,
+          medicineId: id,
+          patientId: localCache.medicines[idx].patientId || 'usr-patient-1',
+          time: timeStr,
+          timeStr,
+          enabled: true,
+          createdAt: Date.now(),
+        }));
+        newTimes.forEach((t) => localCache.reminder_times.push(t));
       }
       persistLocalCache();
-      
+
+      const firestoreDb = getFirestoreDb();
+      if (firestoreDb) {
+        try {
+          await updateDoc(doc(firestoreDb, 'medicines', localCache.medicines[idx].firestoreId || id), updates);
+
+          if (timesList !== null) {
+            const patientId = localCache.medicines[idx].patientId || 'usr-patient-1';
+            // Delete old reminder_times for this medicine from Firestore
+            const rSnap = await getDocs(
+              query(
+                collection(firestoreDb, 'reminder_times'),
+                where('patientId', '==', patientId),
+                where('medicineId', '==', id)
+              )
+            );
+            for (const rDoc of rSnap.docs) {
+              await deleteDoc(doc(firestoreDb, 'reminder_times', rDoc.id));
+            }
+            // Add new reminder_times
+            for (const nt of newTimes) {
+              await setDoc(doc(firestoreDb, 'reminder_times', nt.id), {
+                ...nt,
+                createdAt: serverTimestamp(),
+              });
+            }
+          }
+        } catch (e) {
+          console.warn('Firestore update medicine error:', e);
+        }
+      }
+
       // Sync to refill_summary
       await this.syncRefillSummary(localCache.medicines[idx]);
-      
+
       return localCache.medicines[idx];
     }
     return null;
   },
-  async deleteMedicine(id) {
+  async deleteMedicine(id, targetPatientId = null) {
     const deletedMed = localCache.medicines.find((m) => m.id === id);
     const deletedTimes = localCache.reminder_times.filter((rt) => rt.medicineId === id);
-    if (!deletedMed) return { medicine: null, times: deletedTimes };
-    deletedMed.deleted = true;
-    deletedMed.deletedAt = Date.now();
+    const deletedDoseLogs = localCache.dose_logs.filter((dl) => dl.medicineId === id);
+    const deletedRefillSummary = localCache.refill_summary?.find((rs) => rs.medicineId === id || rs.id === `rs-${id}`);
 
+    const pId = targetPatientId || deletedMed?.patientId || 'usr-patient-1';
+
+    // Remove from localCache
+    localCache.medicines = localCache.medicines.filter((m) => m.id !== id);
+    localCache.reminder_times = localCache.reminder_times.filter((rt) => rt.medicineId !== id);
+    localCache.dose_logs = localCache.dose_logs.filter((dl) => dl.medicineId !== id);
+    if (localCache.refill_summary) {
+      localCache.refill_summary = localCache.refill_summary.filter((rs) => rs.medicineId !== id && rs.id !== `rs-${id}`);
+    }
     persistLocalCache();
-    
-    // Delete from refill_summary
-    await this.deleteRefillSummary(id);
-    
+
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      updateDoc(doc(firestoreDb, 'medicines', deletedMed.firestoreId || deletedMed.id), {
-        deleted: true,
-        deletedAt: serverTimestamp(),
-      }).catch((e) => console.warn('Firestore soft-delete medicine error:', e));
-    }
-    return { medicine: { ...deletedMed, deleted: false, deletedAt: null }, times: deletedTimes };
-  },
-  restoreMedicine(medicine, times = []) {
-    if (medicine) {
-      const restored = { ...medicine, deleted: false, deletedAt: null };
-      const index = localCache.medicines.findIndex((item) => item.id === medicine.id);
-      if (index < 0) localCache.medicines.push(restored);
-      else localCache.medicines[index] = restored;
-      if (times.length) {
-        localCache.reminder_times = localCache.reminder_times.filter((time) => time.medicineId !== medicine.id);
-        times.forEach((time) => localCache.reminder_times.push(time));
+      try {
+        const batch = writeBatch(firestoreDb);
+
+        // Delete medicines/{id}
+        const medRef = doc(firestoreDb, 'medicines', deletedMed?.firestoreId || id);
+        batch.delete(medRef);
+
+        // Delete reminder_times docs where patientId == pId AND medicineId == id
+        const rSnap = await getDocs(
+          query(
+            collection(firestoreDb, 'reminder_times'),
+            where('patientId', '==', pId),
+            where('medicineId', '==', id)
+          )
+        );
+        rSnap.docs.forEach((dDoc) => {
+          batch.delete(dDoc.ref);
+        });
+
+        // Delete dose_logs docs where patientId == pId AND medicineId == id
+        const dlSnap = await getDocs(
+          query(
+            collection(firestoreDb, 'dose_logs'),
+            where('patientId', '==', pId),
+            where('medicineId', '==', id)
+          )
+        );
+        dlSnap.docs.forEach((dDoc) => {
+          batch.delete(dDoc.ref);
+        });
+
+        // Delete refill_summary/rs-{id}
+        const rsRef = doc(firestoreDb, 'refill_summary', `rs-${id}`);
+        batch.delete(rsRef);
+
+        await batch.commit();
+      } catch (e) {
+        console.error('[DB] deleteMedicine batch error:', e);
+        throw e;
       }
+    }
+    return {
+      medicine: deletedMed ? { ...deletedMed, deleted: false, deletedAt: null } : null,
+      times: deletedTimes,
+      doseLogs: deletedDoseLogs,
+      refillSummary: deletedRefillSummary,
+    };
+  },
+  async ensureDailyDoseLogs(patientId, userRole = 'patient', targetDateKey = null) {
+    if (userRole === 'nurse' || userRole === 'doctor' || userRole === 'pharmacist') {
+      return;
+    }
+    if (!patientId) return;
+
+    const todayStr = targetDateKey || new Date().toISOString().slice(0, 10);
+    const medicines = this.getMedicines(patientId).filter((m) => m.active !== false && !m.deleted);
+    const firestoreDb = getFirestoreDb();
+
+    let rTimes = localCache.reminder_times.filter((rt) => rt.patientId === patientId);
+    let existingLogs = localCache.dose_logs.filter((dl) => dl.patientId === patientId && (dl.date === todayStr || dl.date === 'Today'));
+
+    if (firestoreDb) {
+      try {
+        const rSnap = await getDocs(
+          query(collection(firestoreDb, 'reminder_times'), where('patientId', '==', patientId))
+        );
+        if (!rSnap.empty) {
+          const fetchedTimes = rSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          localCache.reminder_times = localCache.reminder_times
+            .filter((rt) => rt.patientId !== patientId)
+            .concat(fetchedTimes);
+          rTimes = fetchedTimes;
+        }
+
+        const lSnap = await getDocs(
+          query(
+            collection(firestoreDb, 'dose_logs'),
+            where('patientId', '==', patientId),
+            where('date', '==', todayStr)
+          )
+        );
+        if (!lSnap.empty) {
+          const fetchedLogs = lSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+          localCache.dose_logs = localCache.dose_logs
+            .filter((dl) => !(dl.patientId === patientId && dl.date === todayStr))
+            .concat(fetchedLogs);
+          existingLogs = fetchedLogs;
+        }
+      } catch (err) {
+        console.warn('ensureDailyDoseLogs fetch error:', err);
+      }
+    }
+
+    const newLogsToCreate = [];
+
+    medicines.forEach((med) => {
+      const timesForMed = rTimes.filter((rt) => rt.medicineId === med.id && rt.enabled !== false);
+      const timeStrs = timesForMed.length > 0 ? timesForMed.map((t) => t.time || t.timeStr) : ['9:00 AM'];
+
+      timeStrs.forEach((tStr) => {
+        const alreadyExists = existingLogs.some(
+          (l) =>
+            l.medicineId === med.id &&
+            (l.time === tStr || l.timeStr === tStr) &&
+            (l.date === todayStr || l.date === 'Today')
+        );
+
+        if (!alreadyExists) {
+          const cleanTime = String(tStr).replace(/[^a-zA-Z0-9]/g, '');
+          const logId = `dl-${todayStr}-${med.id}-${cleanTime}`;
+          const newLog = {
+            id: logId,
+            patientId,
+            medicineId: med.id,
+            medicineName: med.name,
+            dose: med.dose,
+            time: tStr,
+            timeStr: tStr,
+            date: todayStr,
+            status: 'Upcoming',
+            timestamp: Date.now(),
+          };
+          newLogsToCreate.push(newLog);
+          existingLogs.push(newLog);
+        }
+      });
+    });
+
+    if (newLogsToCreate.length > 0) {
+      newLogsToCreate.forEach((log) => localCache.dose_logs.push(log));
       persistLocalCache();
-      const firestoreDb = getFirestoreDb();
+
       if (firestoreDb) {
-        updateDoc(doc(firestoreDb, 'medicines', medicine.firestoreId || medicine.id), {
-          deleted: false,
-          deletedAt: null,
-        }).catch((e) => console.warn('Firestore restore medicine error:', e));
+        for (const log of newLogsToCreate) {
+          try {
+            await setDoc(doc(firestoreDb, 'dose_logs', log.id), {
+              ...log,
+              timestamp: serverTimestamp(),
+            });
+          } catch (e) {
+            console.warn('Error setting doseLog in Firestore:', e);
+          }
+        }
+      }
+    }
+  },
+  async cleanupDuplicateRemindersAndLogs(patientId) {
+    if (!patientId) return;
+    const firestoreDb = getFirestoreDb();
+    if (!firestoreDb) return;
+
+    try {
+      // 1. Cleanup duplicate reminder_times
+      const rSnap = await getDocs(
+        query(collection(firestoreDb, 'reminder_times'), where('patientId', '==', patientId))
+      );
+      const rMap = {};
+      for (const dDoc of rSnap.docs) {
+        const data = dDoc.data();
+        const key = `${data.medicineId}_${data.time || data.timeStr}`;
+        if (rMap[key]) {
+          await deleteDoc(doc(firestoreDb, 'reminder_times', dDoc.id));
+        } else {
+          rMap[key] = dDoc.id;
+        }
+      }
+
+      // 2. Cleanup duplicate dose_logs
+      const lSnap = await getDocs(query(collection(firestoreDb, 'dose_logs'), where('patientId', '==', patientId)));
+      const lMap = {};
+      for (const dDoc of lSnap.docs) {
+        const data = dDoc.data();
+        const key = `${data.medicineId}_${data.time || data.timeStr}_${data.date}`;
+        if (lMap[key]) {
+          const existingDocId = lMap[key].id;
+          if (data.status === 'Taken' || data.status === 'Skipped') {
+            await deleteDoc(doc(firestoreDb, 'dose_logs', existingDocId));
+            lMap[key] = { id: dDoc.id, status: data.status };
+          } else {
+            await deleteDoc(doc(firestoreDb, 'dose_logs', dDoc.id));
+          }
+        } else {
+          lMap[key] = { id: dDoc.id, status: data.status };
+        }
+      }
+    } catch (err) {
+      console.warn('Cleanup error:', err);
+    }
+  },
+  async restoreMedicine(medicineOrBackup, timesList = []) {
+    let medicine = null;
+    let times = [];
+    let doseLogs = [];
+    let refillSummary = null;
+
+    if (medicineOrBackup && medicineOrBackup.medicine !== undefined) {
+      medicine = medicineOrBackup.medicine;
+      times = medicineOrBackup.times || [];
+      doseLogs = medicineOrBackup.doseLogs || [];
+      refillSummary = medicineOrBackup.refillSummary || null;
+    } else {
+      medicine = medicineOrBackup;
+      times = timesList;
+    }
+
+    if (!medicine) return;
+
+    const restored = { ...medicine, deleted: false, deletedAt: null };
+    const index = localCache.medicines.findIndex((item) => item.id === medicine.id);
+    if (index < 0) localCache.medicines.push(restored);
+    else localCache.medicines[index] = restored;
+
+    if (times.length) {
+      localCache.reminder_times = localCache.reminder_times.filter((time) => time.medicineId !== medicine.id);
+      times.forEach((time) => localCache.reminder_times.push(time));
+    }
+    if (doseLogs.length) {
+      localCache.dose_logs = localCache.dose_logs.filter((dl) => dl.medicineId !== medicine.id);
+      doseLogs.forEach((dl) => localCache.dose_logs.push(dl));
+    }
+    if (refillSummary) {
+      if (!localCache.refill_summary) localCache.refill_summary = [];
+      localCache.refill_summary = localCache.refill_summary.filter((rs) => rs.medicineId !== medicine.id && rs.id !== `rs-${medicine.id}`);
+      localCache.refill_summary.push(refillSummary);
+    }
+    persistLocalCache();
+
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      try {
+        const batch = writeBatch(firestoreDb);
+        batch.set(doc(firestoreDb, 'medicines', medicine.firestoreId || medicine.id), restored);
+
+        times.forEach((t) => {
+          batch.set(doc(firestoreDb, 'reminder_times', t.id), t);
+        });
+        doseLogs.forEach((dl) => {
+          batch.set(doc(firestoreDb, 'dose_logs', dl.id), dl);
+        });
+        if (refillSummary) {
+          batch.set(doc(firestoreDb, 'refill_summary', refillSummary.id || `rs-${medicine.id}`), refillSummary);
+        }
+        await batch.commit();
+      } catch (e) {
+        console.error('[DB] restoreMedicine batch error:', e);
       }
     }
   },
@@ -584,10 +880,10 @@ export const dbService = {
   getDoseLogs(patientId = 'usr-patient-1') {
     return localCache.dose_logs.filter((dl) => dl.patientId === patientId);
   },
-  addDoseLog(logData) {
+  async addDoseLog(logData) {
     const newLog = {
       id: `dl-${Date.now()}`,
-      patientId: 'usr-patient-1',
+      patientId: logData.patientId || 'usr-patient-1',
       timestamp: Date.now(),
       ...logData,
     };
@@ -596,23 +892,21 @@ export const dbService = {
 
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      setDoc(doc(firestoreDb, 'dose_logs', newLog.id), newLog).catch((e) =>
-        console.warn('Firestore add dose_log error:', e)
-      );
+      await setDoc(doc(firestoreDb, 'dose_logs', newLog.id), newLog);
     }
     return newLog;
   },
-  updateDoseLog(id, status) {
+  async updateDoseLog(id, status) {
     const index = localCache.dose_logs.findIndex((log) => log.id === id);
     if (index < 0) return null;
     localCache.dose_logs[index] = { ...localCache.dose_logs[index], status, timestamp: Date.now() };
     persistLocalCache();
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      updateDoc(doc(firestoreDb, 'dose_logs', localCache.dose_logs[index].firestoreId || id), {
+      await updateDoc(doc(firestoreDb, 'dose_logs', localCache.dose_logs[index].firestoreId || id), {
         status,
         timestamp: Date.now(),
-      }).catch((error) => console.warn('Firestore update dose log error:', error));
+      });
     }
     return localCache.dose_logs[index];
   },
@@ -628,7 +922,10 @@ export const dbService = {
           .filter((log) => log.patientId !== patientId)
           .concat(logs);
         callback(logs);
-      }, onError);
+      }, (err) => {
+        if (onError) onError(err);
+        callback(this.getDoseLogs(patientId));
+      });
     }
     callback(this.getDoseLogs(patientId));
     return () => {};
@@ -680,14 +977,15 @@ export const dbService = {
     };
   },
 
-  async getDoseSnoozeCount(patientId, medicineId) {
+  async getDoseSnoozeCount(patientId, medicineId, dateKey = null) {
+    const todayStr = dateKey || new Date().toISOString().slice(0, 10);
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
       const q = query(
         collection(firestoreDb, 'dose_logs'),
         where('patientId', '==', patientId),
         where('medicineId', '==', medicineId),
-        where('date', '==', 'Today')
+        where('date', '==', todayStr)
       );
       const snapshot = await getDocs(q);
       const latest = snapshot.docs
@@ -695,30 +993,31 @@ export const dbService = {
         .sort((left, right) => Number(right.timestamp || 0) - Number(left.timestamp || 0))[0];
       return { snoozeCount: latest?.snoozeCount || 0, doseLogId: latest?.id || null };
     }
-    const local = localCache.dose_logs.find((log) => log.patientId === patientId && log.medicineId === medicineId && log.date === 'Today');
+    const local = localCache.dose_logs.find((log) => log.patientId === patientId && log.medicineId === medicineId && log.date === todayStr);
     return { snoozeCount: local?.snoozeCount || 0, doseLogId: local?.id || null };
   },
 
   async recordDoseSnooze({ patientId, medicineId, medicine, time }) {
+    const todayStr = new Date().toISOString().slice(0, 10);
     const firestoreDb = getFirestoreDb();
     let doseLog = null;
     if (firestoreDb) {
-      const current = await this.getDoseSnoozeCount(patientId, medicineId);
+      const current = await this.getDoseSnoozeCount(patientId, medicineId, todayStr);
       const snoozeCount = current.snoozeCount + 1;
       if (current.doseLogId) {
         await updateDoc(doc(firestoreDb, 'dose_logs', current.doseLogId), {
           snoozeCount,
-          date: 'Today',
+          date: todayStr,
           status: 'Pending',
           timestamp: Date.now(),
         });
-        doseLog = { id: current.doseLogId, patientId, medicineId, medicine, time, date: 'Today', status: 'Pending', snoozeCount, timestamp: Date.now() };
+        doseLog = { id: current.doseLogId, patientId, medicineId, medicine, time, date: todayStr, status: 'Pending', snoozeCount, timestamp: Date.now() };
       } else {
-        const log = { patientId, medicineId, medicine, time, date: 'Today', status: 'Pending', snoozeCount, timestamp: Date.now() };
+        const log = { patientId, medicineId, medicine, time, date: todayStr, status: 'Pending', snoozeCount, timestamp: Date.now() };
         const created = await addDoc(collection(firestoreDb, 'dose_logs'), log);
         doseLog = { id: created.id, ...log };
       }
-      localCache.dose_logs = localCache.dose_logs.filter((log) => !(log.patientId === patientId && log.medicineId === medicineId && log.date === 'Today')).concat(doseLog);
+      localCache.dose_logs = localCache.dose_logs.filter((log) => !(log.patientId === patientId && log.medicineId === medicineId && (log.date === todayStr || log.date === 'Today'))).concat(doseLog);
       persistLocalCache();
       if (snoozeCount >= 2) {
         const alertExists = localCache.alerts.some((alert) => alert.patientId === patientId && alert.type === 'snooze_limit' && alert.medicine === medicine && alert.status === 'open');
@@ -727,11 +1026,11 @@ export const dbService = {
       return { snoozeCount, doseLogId: doseLog.id };
     }
 
-    const local = localCache.dose_logs.find((log) => log.patientId === patientId && log.medicineId === medicineId && log.date === 'Today');
+    const local = localCache.dose_logs.find((log) => log.patientId === patientId && log.medicineId === medicineId && (log.date === todayStr || log.date === 'Today'));
     const snoozeCount = (local?.snoozeCount || 0) + 1;
     if (local) Object.assign(local, { snoozeCount, status: 'Pending' });
     else {
-      doseLog = { id: `dl-${Date.now()}`, patientId, medicineId, medicine, time, date: 'Today', status: 'Pending', snoozeCount, timestamp: Date.now() };
+      doseLog = { id: `dl-${Date.now()}`, patientId, medicineId, medicine, time, date: todayStr, status: 'Pending', snoozeCount, timestamp: Date.now() };
       localCache.dose_logs.push(doseLog);
     }
     persistLocalCache();
@@ -747,7 +1046,10 @@ export const dbService = {
         const alertsList = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         localCache.alerts = localCache.alerts.filter((alert) => alert.patientId !== patientId).concat(alertsList);
         callback(alertsList);
-      }, onError);
+      }, (err) => {
+        if (onError) onError(err);
+        callback(this.getAlerts(patientId));
+      });
     }
     callback(this.getAlerts(patientId));
     return () => {};
@@ -799,17 +1101,45 @@ export const dbService = {
   },
 
   // CARE_LINKS
-  subscribeToCareLinks(patientId, callback, onError) {
+  subscribeToCareLinks(userId, role = 'patient', callback, onError) {
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      const q = query(collection(firestoreDb, 'care_links'), where('patientId', '==', patientId));
-      return onSnapshot(q, (snapshot) => {
-        const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-        localCache.care_links = localCache.care_links.filter((item) => item.patientId !== patientId).concat(records);
-        callback(records);
-      }, onError);
+      let q;
+      if (role === 'caregiver' || role === 'nurse') {
+        q = query(collection(firestoreDb, 'care_links'), where('memberId', '==', userId));
+      } else {
+        q = query(collection(firestoreDb, 'care_links'), where('patientId', '==', userId));
+      }
+      return onSnapshot(
+        q,
+        (snapshot) => {
+          const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+          if (role === 'caregiver' || role === 'nurse') {
+            localCache.care_links = localCache.care_links
+              .filter((item) => item.memberId !== userId)
+              .concat(records);
+          } else {
+            localCache.care_links = localCache.care_links
+              .filter((item) => item.patientId !== userId)
+              .concat(records);
+          }
+          callback(records);
+        },
+        (err) => {
+          if (onError) onError(err);
+          if (role === 'caregiver' || role === 'nurse') {
+            callback(this.getCareLinksForMember(userId));
+          } else {
+            callback(this.getCareLinks(userId));
+          }
+        }
+      );
     }
-    callback(this.getCareLinks(patientId));
+    if (role === 'caregiver' || role === 'nurse') {
+      callback(this.getCareLinksForMember(userId));
+    } else {
+      callback(this.getCareLinks(userId));
+    }
     return () => {};
   },
   getCareLinks(patientId = 'usr-patient-1') {
@@ -818,7 +1148,7 @@ export const dbService = {
   getCareLinksForMember(memberId) {
     return localCache.care_links.filter((c) => c.memberId === memberId);
   },
-  async addCareLink({ patientId, memberId, memberName, role, permissions = {}, status = 'Pending' }) {
+  async addCareLink({ patientId, memberId, memberName, role, permissions = {}, status = 'Active' }) {
     const id = `${patientId}_${memberId}`;
     const link = { id, patientId, memberId, memberName, role, status, permissions, createdAt: Date.now() };
     const firestoreDb = getFirestoreDb();
@@ -1061,67 +1391,118 @@ export const dbService = {
   getPatientVisibleNotes(patientId = 'usr-patient-1') {
     return localCache.care_notes.filter((cn) => 
       cn.patientId === patientId && 
-      cn.visibleToPatient === true
+      (cn.visibleToPatient === true || cn.visibleToPatient === undefined)
     ).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
   },
-  addCareNote(noteData) {
+  subscribeToCareNotes(patientId, role = 'patient', callback, onError) {
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      let q;
+      if (role === 'patient') {
+        q = query(
+          collection(firestoreDb, 'care_notes'),
+          where('patientId', '==', patientId),
+          where('visibleToPatient', '==', true)
+        );
+      } else if (role === 'caregiver' || role === 'nurse') {
+        q = query(
+          collection(firestoreDb, 'care_notes'),
+          where('patientId', '==', patientId)
+        );
+      } else {
+        // Doctor and pharmacist read through active grants only
+        // This should be called with a valid grant check before subscribing
+        q = query(
+          collection(firestoreDb, 'care_notes'),
+          where('patientId', '==', patientId)
+        );
+      }
+      return onSnapshot(
+        q,
+        (snapshot) => {
+          const records = snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
+          localCache.care_notes = localCache.care_notes
+            .filter((item) => item.patientId !== patientId)
+            .concat(records);
+          callback(records.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)));
+        },
+        (err) => {
+          if (onError) onError(err);
+          callback(this.getPatientVisibleNotes(patientId));
+        }
+      );
+    }
+    callback(this.getPatientVisibleNotes(patientId));
+    return () => {};
+  },
+  async addCareNote(noteData) {
+    const noteText = noteData.text || noteData.note || '';
     const newNote = {
       id: `cn-${Date.now()}`,
       patientId: noteData.patientId || 'usr-patient-1',
-      authorId: noteData.authorId || this.getCurrentUser?.()?.id || 'unknown',
-      authorRole: noteData.authorRole || 'nurse',
-      text: noteData.text || noteData.note || '',
-      visibleToPatient: noteData.visibleToPatient !== undefined ? noteData.visibleToPatient : false,
+      authorId: noteData.authorId || 'unknown',
+      authorName: noteData.authorName || 'Nurse',
+      authorRole: noteData.authorRole || 'Nurse',
+      text: noteText,
+      note: noteText,
+      visibleToPatient: noteData.visibleToPatient !== undefined ? noteData.visibleToPatient : true,
       createdAt: Date.now(),
       editedAt: null,
     };
+
     localCache.care_notes.push(newNote);
     persistLocalCache();
 
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      addDoc(collection(firestoreDb, 'care_notes'), {
+      const docRef = await addDoc(collection(firestoreDb, 'care_notes'), {
         ...newNote,
         createdAt: serverTimestamp(),
-      }).catch((e) =>
-        console.warn('Firestore add care note error:', e)
-      );
+      });
+      newNote.firestoreId = docRef.id;
     }
 
-    // Create notification if visible to patient
+    // Create notifications if visibleToPatient is true
     if (newNote.visibleToPatient) {
-      const notification = {
-        id: `notif-${Date.now()}`,
+      const snippet = noteText.length > 60 ? `${noteText.slice(0, 57)}...` : noteText;
+
+      // 1. Patient Notification
+      const patientNotification = {
+        id: `notif-${Date.now()}-patient`,
         userId: newNote.patientId,
         patientId: newNote.patientId,
-        type: 'care_note',
-        title: 'New care note added',
-        body: `${newNote.authorRole === 'nurse' ? 'Nurse' : 'Caregiver'} added a note for you`,
+        type: 'update',
+        categoryKey: 'updates',
+        title: 'New note from your care team',
+        body: snippet,
+        message: snippet,
         read: false,
         createdBy: newNote.authorId,
         createdAt: Date.now(),
         relatedId: newNote.id,
       };
-      localCache.notifications.push(notification);
+      localCache.notifications.push(patientNotification);
       persistLocalCache();
       if (firestoreDb) {
-        addDoc(collection(firestoreDb, 'notifications'), {
-          ...notification,
+        await addDoc(collection(firestoreDb, 'notifications'), {
+          ...patientNotification,
           createdAt: serverTimestamp(),
-        }).catch((e) => console.warn('Firestore add notification error:', e));
+        }).catch((e) => console.warn('Firestore add patient notification error:', e));
       }
 
-      // Also create notifications for caregivers with viewCareNotes permission
+      // 2. Caregiver Notifications for linked caregivers
       const careLinks = this.getCareLinks(newNote.patientId);
-      careLinks.forEach((link) => {
-        if (link.status === 'Active' && link.role === 'caregiver' && link.permissions?.viewCareNotes) {
+      for (const link of careLinks) {
+        if (link.status === 'Active') {
           const caregiverNotification = {
             id: `notif-${Date.now()}-${link.memberId}`,
             userId: link.memberId,
             patientId: newNote.patientId,
-            type: 'care_note',
-            title: 'New care note added',
-            body: `A new care note was added for your patient`,
+            type: 'update',
+            categoryKey: 'updates',
+            title: 'New note from care team',
+            body: snippet,
+            message: snippet,
             read: false,
             createdBy: newNote.authorId,
             createdAt: Date.now(),
@@ -1130,25 +1511,26 @@ export const dbService = {
           localCache.notifications.push(caregiverNotification);
           persistLocalCache();
           if (firestoreDb) {
-            addDoc(collection(firestoreDb, 'notifications'), {
+            await addDoc(collection(firestoreDb, 'notifications'), {
               ...caregiverNotification,
               createdAt: serverTimestamp(),
             }).catch((e) => console.warn('Firestore add caregiver notification error:', e));
           }
         }
-      });
+      }
     }
 
     return newNote;
   },
-  updateCareNote(id, updates) {
+
+  async updateCareNote(id, updates) {
     const idx = localCache.care_notes.findIndex((cn) => cn.id === id);
     if (idx !== -1) {
       localCache.care_notes[idx] = { ...localCache.care_notes[idx], ...updates, editedAt: Date.now() };
       persistLocalCache();
       const firestoreDb = getFirestoreDb();
       if (firestoreDb) {
-        updateDoc(doc(firestoreDb, 'care_notes', id), {
+        await updateDoc(doc(firestoreDb, 'care_notes', id), {
           ...updates,
           editedAt: serverTimestamp(),
         });

@@ -92,118 +92,180 @@ export default function TodaysScheduleScreen({
     return t(dayKeys[dayIndex]);
   };
 
-  // Load doses from Firestore for selected date
-  useEffect(() => {
-    if (!firestore || isOffline) {
-      // Fallback to local dbService if offline or no Firestore
-      const medicines = dbService.getMedicines(patientId);
-      const logs = dbService.getDoseLogs(patientId);
-      const selectedDateKey = formatDateKey(selectedDate);
+  // Helper to parse time string like "8:00 AM" to minutes from midnight
+  const parseTimeToMinutes = (timeStr) => {
+    if (!timeStr) return 0;
+    const match = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
+    if (!match) return 0;
+    let hours = parseInt(match[1], 10);
+    const minutes = parseInt(match[2], 10);
+    const period = match[3] ? match[3].toUpperCase() : null;
 
-      const scheduleList = medicines.map((med) => {
-        const log = logs.find((l) => l.medicineId === med.id && l.date === selectedDateKey);
-        const times = dbService.getReminderTimes(med.id);
-        const timeStr = times[0] ? times[0].timeStr : '9:00 AM';
+    if (period === 'PM' && hours < 12) hours += 12;
+    if (period === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+  };
 
-        return {
-          id: med.id,
-          logId: log ? log.id : null,
+  // Build unique schedule list per medicine and reminder time
+  const buildScheduleList = (logs, selectedDateKey) => {
+    const medicines = dbService.getMedicines(patientId);
+    const scheduleList = [];
+    const seenKeys = new Set();
+
+    medicines.forEach((med) => {
+      const times = dbService.getReminderTimes(med.id);
+      const timeStrs = times.length > 0 ? times.map((t) => t.timeStr) : ['9:00 AM'];
+
+      timeStrs.forEach((timeStr) => {
+        const itemKey = `${med.id}_${timeStr}`;
+        if (seenKeys.has(itemKey)) return;
+        seenKeys.add(itemKey);
+
+        const log = logs.find(
+          (l) =>
+            l.medicineId === med.id &&
+            (l.date === selectedDateKey || l.date === 'Today') &&
+            (l.time === timeStr || l.timeStr === timeStr)
+        ) || logs.find(
+          (l) =>
+            l.medicineId === med.id &&
+            (l.date === selectedDateKey || l.date === 'Today')
+        );
+
+        scheduleList.push({
+          id: itemKey,
+          medicineId: med.id,
+          logId: log ? (log.id || log.firestoreId) : null,
           name: med.name,
           dose: med.dose,
           meal: med.mealInstruction,
           time: timeStr,
           status: log ? log.status : 'Pending',
-        };
+        });
       });
+    });
 
-      setDoses(scheduleList);
-      return;
-    }
+    return scheduleList;
+  };
 
-    // Firestore live query for dose_logs filtered by patientId and date
+  // Load doses from Firestore for selected date
+  useEffect(() => {
     const selectedDateKey = formatDateKey(selectedDate);
+
+    const initSchedule = async () => {
+      await dbService.cleanupDuplicateRemindersAndLogs(patientId);
+      await dbService.ensureDailyDoseLogs(patientId, selectedDateKey);
+
+      if (!firestore || isOffline) {
+        const logs = dbService.getDoseLogs(patientId);
+        const scheduleList = buildScheduleList(logs, selectedDateKey);
+        setDoses(scheduleList);
+      }
+    };
+
+    initSchedule();
+
+    if (!firestore || isOffline) return;
+
     const q = query(
       collection(firestore, 'dose_logs'),
       where('patientId', '==', patientId),
       where('date', '==', selectedDateKey)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      const medicines = dbService.getMedicines(patientId);
-
-      const scheduleList = medicines.map((med) => {
-        const log = logs.find((l) => l.medicineId === med.id);
-        const times = dbService.getReminderTimes(med.id);
-        const timeStr = times[0] ? times[0].timeStr : '9:00 AM';
-
-        return {
-          id: med.id,
-          logId: log ? log.id : null,
-          name: med.name,
-          dose: med.dose,
-          meal: med.mealInstruction,
-          time: timeStr,
-          status: log ? log.status : 'Pending',
-        };
-      });
-
-      setDoses(scheduleList);
-    }, (error) => {
-      console.error('Firestore query error:', error);
-      // Fallback to local dbService on error
-      const medicines = dbService.getMedicines(patientId);
-      const logs = dbService.getDoseLogs(patientId);
-      const scheduleList = medicines.map((med) => {
-        const log = logs.find((l) => l.medicineId === med.id && l.date === selectedDateKey);
-        const times = dbService.getReminderTimes(med.id);
-        const timeStr = times[0] ? times[0].timeStr : '9:00 AM';
-        return {
-          id: med.id,
-          logId: log ? log.id : null,
-          name: med.name,
-          dose: med.dose,
-          meal: med.mealInstruction,
-          time: timeStr,
-          status: log ? log.status : 'Pending',
-        };
-      });
-      setDoses(scheduleList);
-    });
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const logs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+        const scheduleList = buildScheduleList(logs, selectedDateKey);
+        setDoses(scheduleList);
+      },
+      (error) => {
+        console.error('Firestore query error:', error);
+        const logs = dbService.getDoseLogs(patientId);
+        const scheduleList = buildScheduleList(logs, selectedDateKey);
+        setDoses(scheduleList);
+      }
+    );
 
     return () => unsubscribe();
   }, [patientId, selectedDate, firestore, isOffline]);
 
-  const handleMarkTaken = (doseItem) => {
+  const handleMarkTaken = async (doseItem) => {
     const selectedDateKey = formatDateKey(selectedDate);
-    if (doseItem.logId) {
-      dbService.updateDoseLog(doseItem.logId, 'Taken');
-    } else {
-      dbService.addDoseLog({
-        patientId,
-        medicineId: doseItem.id,
-        time: doseItem.time,
-        date: selectedDateKey,
-        status: 'Taken',
-      });
+
+    // Optimistically update React state immediately
+    setDoses((prevDoses) =>
+      prevDoses.map((d) => (d.id === doseItem.id ? { ...d, status: 'Taken' } : d))
+    );
+
+    try {
+      if (doseItem.logId) {
+        await dbService.updateDoseLog(doseItem.logId, 'Taken');
+      } else {
+        const newLog = await dbService.addDoseLog({
+          patientId,
+          medicineId: doseItem.medicineId || doseItem.id,
+          medicineName: doseItem.name,
+          dose: doseItem.dose,
+          time: doseItem.time,
+          date: selectedDateKey,
+          status: 'Taken',
+        });
+        if (newLog?.id) {
+          setDoses((prevDoses) =>
+            prevDoses.map((d) =>
+              d.id === doseItem.id ? { ...d, logId: newLog.id } : d
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error marking dose taken:', error);
+      setDoses((prevDoses) =>
+        prevDoses.map((d) => (d.id === doseItem.id ? { ...d, status: doseItem.status } : d))
+      );
     }
   };
 
-  const handleConfirmSkip = () => {
+  const handleConfirmSkip = async () => {
     if (!skipTarget) return;
-    const selectedDateKey = formatDateKey(selectedDate);
-    if (skipTarget.logId) {
-      dbService.updateDoseLog(skipTarget.logId, 'Skipped');
-    } else {
-      dbService.addDoseLog({ 
-        patientId, 
-        medicineId: skipTarget.id, 
-        time: skipTarget.time, 
-        date: selectedDateKey, 
-        status: 'Skipped' 
-      });
-    }
+    const doseItem = skipTarget;
     setSkipTarget(null);
+    const selectedDateKey = formatDateKey(selectedDate);
+
+    // Optimistically update React state immediately
+    setDoses((prevDoses) =>
+      prevDoses.map((d) => (d.id === doseItem.id ? { ...d, status: 'Skipped' } : d))
+    );
+
+    try {
+      if (doseItem.logId) {
+        await dbService.updateDoseLog(doseItem.logId, 'Skipped');
+      } else {
+        const newLog = await dbService.addDoseLog({
+          patientId,
+          medicineId: doseItem.medicineId || doseItem.id,
+          medicineName: doseItem.name,
+          dose: doseItem.dose,
+          time: doseItem.time,
+          date: selectedDateKey,
+          status: 'Skipped',
+        });
+        if (newLog?.id) {
+          setDoses((prevDoses) =>
+            prevDoses.map((d) =>
+              d.id === doseItem.id ? { ...d, logId: newLog.id } : d
+            )
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error marking dose skipped:', error);
+      setDoses((prevDoses) =>
+        prevDoses.map((d) => (d.id === doseItem.id ? { ...d, status: doseItem.status } : d))
+      );
+    }
   };
 
   // Group doses by time
@@ -215,13 +277,25 @@ export default function TodaysScheduleScreen({
     timeGroups[item.time].push(item);
   });
 
-  const handleCompleteAll = (timeStr) => {
+  // Sort time groups chronologically
+  const sortedTimeKeys = Object.keys(timeGroups).sort(
+    (a, b) => parseTimeToMinutes(a) - parseTimeToMinutes(b)
+  );
+
+  const handleCompleteAll = async (timeStr) => {
     const groupItems = timeGroups[timeStr] || [];
-    groupItems.forEach((doseItem) => {
-      if (doseItem.status !== 'Taken') {
-        handleMarkTaken(doseItem);
-      }
-    });
+    const pendingItems = groupItems.filter((it) => it.status !== 'Taken');
+    if (pendingItems.length === 0) return;
+
+    setDoses((prevDoses) =>
+      prevDoses.map((d) =>
+        d.time === timeStr && d.status !== 'Taken' ? { ...d, status: 'Taken' } : d
+      )
+    );
+
+    for (const item of pendingItems) {
+      await handleMarkTaken(item);
+    }
   };
 
   const handleWeekNav = (direction) => {
@@ -336,7 +410,7 @@ export default function TodaysScheduleScreen({
         </View>
 
         {/* Grouped Dose Sections */}
-        {Object.keys(timeGroups).map((timeStr) => {
+        {sortedTimeKeys.map((timeStr) => {
           const groupItems = timeGroups[timeStr];
           const hasPending = groupItems.some((it) => it.status !== 'Taken');
 

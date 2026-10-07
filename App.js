@@ -238,7 +238,7 @@ export default function App() {
       case 'EditDeleteMedicine': return <EditDeleteMedicineScreen navigation={navigation} route={route} />;
       case 'MedicationDetail': return <MedicationDetailScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'ReminderAlert': return <ReminderAlertScreen navigation={navigation} route={route} currentUser={currentUser} userPreferences={userPreferences} />;
-      case 'Notifications': return <NotificationsScreen navigation={navigation} isOffline={isOffline} onRetryOffline={retryConnection} />;
+      case 'Notifications': return <NotificationsScreen navigation={navigation} currentUser={currentUser} isOffline={isOffline} onRetryOffline={retryConnection} />;
       case 'PatientActivity': return <PatientActivityScreen navigation={navigation} currentUser={currentUser} />;
       case 'PatientProfile': return <PatientProfileScreen navigation={navigation} onNavigateTab={handleNavigateTab} onLogout={handleLogout} userPreferences={userPreferences} currentUser={currentUser} />;
       case 'PatientCareNotes': return <PatientCareNotesScreen navigation={navigation} currentUser={currentUser} />;
@@ -270,8 +270,8 @@ export default function App() {
       case 'NurseSignIn': return <NurseSignInScreen navigation={navigation} onNurseSignIn={(nurse) => { setUserRole('nurse'); navigation.navigate('NurseMyPatients', { nurse }); }} />;
       case 'NurseMyPatients': return <NurseMyPatientsScreen navigation={navigation} route={route} />;
       case 'NursePatientDetail': return <NursePatientDetailScreen navigation={navigation} route={route} />;
-      case 'AddCareNote': return <AddCareNoteScreen navigation={navigation} route={route} />;
-      case 'EditCareNote': return <EditCareNoteScreen navigation={navigation} route={route} />;
+      case 'AddCareNote': return <AddCareNoteScreen navigation={navigation} route={route} currentUser={currentUser} />;
+      case 'EditCareNote': return <EditCareNoteScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'PatientHistory': return <PatientHistoryScreen navigation={navigation} route={route} />;
       case 'InviteNurse': return <InviteNurseScreen navigation={navigation} />;
       case 'NurseProfile': return <NurseProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;

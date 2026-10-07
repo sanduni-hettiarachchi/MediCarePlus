@@ -14,13 +14,20 @@ import Header from '../../components/Header';
 import UndoSnackbar from '../../components/UndoSnackbar';
 import dbService from '../../services/db';
 
-export default function ManagePatientScheduleScreen({ navigation, onNavigateTab, hasAlertBadge = false }) {
+export default function ManagePatientScheduleScreen({ navigation, onNavigateTab, hasAlertBadge = false, currentUser }) {
   const [medicines, setMedicines] = useState([]);
   const [editingMed, setEditingMed] = useState(null);
   const [newTime, setNewTime] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [removedDose, setRemovedDose] = useState(null);
   const [snackbarMsg, setSnackbarMsg] = useState('');
+
+  const caregiverId = currentUser?.id || 'usr-caregiver-1';
+  const links = dbService.getCareLinksForMember(caregiverId);
+  const activeLink = links.find((l) => l.status === 'Active');
+  const permissions = activeLink?.permissions || { viewSchedule: true, editSchedule: false };
+  const canViewSchedule = permissions.viewSchedule !== false;
+  const canEditSchedule = permissions.editSchedule === true;
 
   const loadData = () => {
     const list = dbService.getMedicines();
@@ -36,11 +43,16 @@ export default function ManagePatientScheduleScreen({ navigation, onNavigateTab,
   }, []);
 
   const handleOpenEdit = (med) => {
+    if (!canEditSchedule) {
+      setSnackbarMsg('You do not have permission to edit the schedule.');
+      return;
+    }
     setEditingMed(med);
     setNewTime(med.timeStr);
   };
 
   const handleSaveTimeChange = () => {
+    if (!canEditSchedule) return;
     if (!editingMed || !newTime.trim()) return;
     dbService.updateMedicine(editingMed.id, {}, [newTime.trim()]);
     setEditingMed(null);
@@ -48,6 +60,7 @@ export default function ManagePatientScheduleScreen({ navigation, onNavigateTab,
   };
 
   const handleConfirmRemove = () => {
+    if (!canEditSchedule) return;
     if (!deleteTarget) return;
     setRemovedDose(dbService.deleteMedicine(deleteTarget.id));
     setSnackbarMsg(`Removed ${deleteTarget.name}`);
@@ -56,6 +69,7 @@ export default function ManagePatientScheduleScreen({ navigation, onNavigateTab,
   };
 
   const handleUndoRemove = () => {
+    if (!canEditSchedule) return;
     if (!removedDose?.medicine) return;
     dbService.restoreMedicine(removedDose.medicine, removedDose.times);
     setRemovedDose(null);
@@ -80,37 +94,59 @@ export default function ManagePatientScheduleScreen({ navigation, onNavigateTab,
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.sectionHeader}>SCHEDULED DOSES</Text>
-
-        {medicines.map((item) => (
-          <View key={item.id} style={styles.scheduleRow}>
-            <View style={styles.infoCol}>
-              <Text style={styles.medName}>{item.name}</Text>
-              <Text style={styles.medDetail}>
-                {item.dose} · {item.mealInstruction}
-              </Text>
-              <View style={styles.timeTag}>
-                <Text style={styles.timeTagText}>🕒 {item.timeStr}</Text>
-              </View>
-            </View>
-
-            <View style={styles.actionsCol}>
-              <TouchableOpacity
-                style={styles.editBtn}
-                onPress={() => handleOpenEdit(item)}
-              >
-                <Text style={styles.editBtnText}>Edit time</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.deleteBtn}
-                onPress={() => setDeleteTarget(item)}
-              >
-                <Text style={styles.deleteBtnText}>Remove</Text>
-              </TouchableOpacity>
-            </View>
+        {!canViewSchedule ? (
+          <View style={styles.restrictedBox}>
+            <Text style={styles.restrictedText}>🔒 Viewing medication schedule is disabled by patient permissions.</Text>
           </View>
-        ))}
+        ) : (
+          <>
+            {!canEditSchedule ? (
+              <View style={styles.infoBanner}>
+                <Text style={styles.infoBannerText}>🔒 View-only mode: You do not have permission to edit the schedule.</Text>
+              </View>
+            ) : null}
+
+            <Text style={styles.sectionHeader}>SCHEDULED DOSES</Text>
+
+            {medicines.map((item) => (
+              <View key={item.id} style={styles.scheduleRow}>
+                <View style={styles.infoCol}>
+                  <Text style={styles.medName}>{item.name}</Text>
+                  <Text style={styles.medDetail}>
+                    {item.dose} · {item.mealInstruction}
+                  </Text>
+                  <View style={styles.timeTag}>
+                    <Text style={styles.timeTagText}>🕒 {item.timeStr}</Text>
+                  </View>
+                </View>
+
+                {canEditSchedule ? (
+                  <View style={styles.actionsCol}>
+                    <TouchableOpacity
+                      style={styles.editBtn}
+                      onPress={() => handleOpenEdit(item)}
+                    >
+                      <Text style={styles.editBtnText}>Edit time</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.deleteBtn}
+                      onPress={() => setDeleteTarget(item)}
+                    >
+                      <Text style={styles.deleteBtnText}>Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={styles.actionsCol}>
+                    <View style={styles.readOnlyBadge}>
+                      <Text style={styles.readOnlyText}>View only</Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+            ))}
+          </>
+        )}
 
         {/* Edit Time Inline Drawer */}
         {editingMed && (
@@ -291,5 +327,46 @@ const styles = StyleSheet.create({
   },
   drawerCancelBtn: {
     marginBottom: 0,
+  },
+  restrictedBox: {
+    backgroundColor: '#FEF2F2',
+    borderColor: '#FCA5A5',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 16,
+    marginVertical: 20,
+    alignItems: 'center',
+  },
+  restrictedText: {
+    fontSize: 14,
+    color: '#991B1B',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  infoBanner: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#F59E0B',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 10,
+    marginTop: 10,
+    marginBottom: 6,
+  },
+  infoBannerText: {
+    fontSize: 13,
+    color: '#92400E',
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  readOnlyBadge: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  readOnlyText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
   },
 });

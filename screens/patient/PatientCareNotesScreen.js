@@ -25,6 +25,18 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
 
   useEffect(() => {
     loadNotes();
+    const unsubscribe = dbService.subscribeToCareNotes(
+      patientId,
+      (notes) => {
+        setCareNotes(notes);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('PatientCareNotesScreen subscription error:', err);
+        setLoading(false);
+      }
+    );
+    return () => unsubscribe();
   }, [patientId]);
 
   const handleRefresh = () => {

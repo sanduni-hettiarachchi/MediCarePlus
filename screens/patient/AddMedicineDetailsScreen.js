@@ -15,12 +15,12 @@ import { useT } from '../../i18n/LanguageContext';
 export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
   const t = useT();
   const patientId = currentUser?.id || 'usr-patient-1';
-  const [name, setName] = useState('Paracetamol XL2');
-  const [dose, setDose] = useState('500 mg');
-  const [times, setTimes] = useState(['8:00 AM', '1:00 PM', '8:00 PM']);
-  const [newTimeInput, setNewTimeInput] = useState('1:00 PM');
+  const [name, setName] = useState('');
+  const [dose, setDose] = useState('');
+  const [times, setTimes] = useState([]);
+  const [newTimeInput, setNewTimeInput] = useState('');
   const [selectedInstruction, setSelectedInstruction] = useState('After lunch');
-  const [notes, setNotes] = useState('Avoid if fever below 100°F');
+  const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleAddTime = () => {
@@ -71,8 +71,8 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
 
       navigation?.navigate('MedicineAdded', { medicine: newMed.medicine, times });
     } catch (error) {
-      console.error('Error saving medicine:', error);
-      setErrorMsg('Failed to save medicine. Please try again.');
+      console.error('AddMedicineDetailsScreen handleSave ERROR:', error, error?.code, error?.message);
+      setErrorMsg(`Failed to save medicine [${error?.code || 'unknown'}]: ${error?.message || error}. Please try again.`);
     }
   };
 

@@ -34,8 +34,14 @@ export default function CaregiverActivityScreen({ navigation, onNavigateTab, use
   }, [currentUser?.id]);
 
   useEffect(() => {
-    const stopAlerts = dbService.subscribeToAlerts(patientId, setAlerts, (error) => setErrorMessage('Something went wrong. Try again.'));
-    const stopLogs = dbService.subscribeToDoseLogs(patientId, (logs) => setTodayLogs(logs.filter(isTodayLog)), (error) => setErrorMessage('Something went wrong. Try again.'));
+    const stopAlerts = dbService.subscribeToAlerts(patientId, setAlerts, (error) => {
+      console.error('ACTIVITY SCREEN ALERTS ERROR:', error);
+      setErrorMessage(`ALERTS ERROR [${error?.code || 'unknown'}]: ${error?.message || error}`);
+    });
+    const stopLogs = dbService.subscribeToDoseLogs(patientId, (logs) => setTodayLogs(logs.filter(isTodayLog)), (error) => {
+      console.error('ACTIVITY SCREEN DOSE LOGS ERROR:', error);
+      setErrorMessage(`DOSE LOGS ERROR [${error?.code || 'unknown'}]: ${error?.message || error}`);
+    });
     return () => { stopAlerts?.(); stopLogs?.(); };
   }, [patientId]);
 
@@ -52,13 +58,25 @@ export default function CaregiverActivityScreen({ navigation, onNavigateTab, use
   const handleCall = async (alert) => {
     const links = dbService.getCareLinksForMember(currentUser?.id);
     const activeLink = links.find(l => l.status === 'Active');
-    const phone = activeLink ? dbService.getUserById(activeLink.patientId)?.phone : alert.patientPhone;
+    const patientUser = activeLink ? dbService.getUserById(activeLink.patientId) : null;
+    const phone = patientUser?.phone || alert.patientPhone || activeLink?.patientPhone;
+    const patientName = patientUser?.name || alert.patientName || activeLink?.patientName || 'Mrs. Perera';
+    const medName = medicineName(alert);
+
     if (phone) {
       try { await Linking.openURL(`tel:${phone}`); } catch (error) { setErrorMessage('Phone calling is not available on this device.'); }
     } else {
       setErrorMessage('Patient phone number is unavailable.');
     }
-    navigation?.navigate('CallOutcomeLog', { alert });
+    navigation?.navigate('CallOutcomeLog', {
+      alert,
+      doseLogId: alert.id,
+      patientId: alert.patientId || patientId,
+      patientName,
+      patientPhone: phone,
+      medicineName: medName,
+      scheduledTime: alert.scheduledAt || alert.time || '1:00 PM',
+    });
   };
 
   const filteredAlerts = alerts.filter((alert) => {

@@ -156,7 +156,7 @@ export default function NursePatientDetailScreen({ navigation, route }) {
 
         {careNotes.length === 0 ? <Text style={styles.emptyNotes}>No care notes yet.</Text> : null}
         {careNotes.map((cn) => {
-          const isAuthor = cn.authorId === nurse?.nurseId || cn.authorId === 'usr-nurse-1' || cn.authorId === nurse?.id;
+          const isAuthor = cn.authorId === nurse?.id || cn.authorId === currentUser?.id;
           return (
             <View key={cn.id} style={styles.noteCard}>
               <View style={styles.noteTopRow}>

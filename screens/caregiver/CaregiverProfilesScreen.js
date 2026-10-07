@@ -3,6 +3,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -21,17 +22,107 @@ export default function CaregiverProfilesScreen({
   hasAlertBadge = false,
   currentUser,
 }) {
+  const [profileUser, setProfileUser] = useState(
+    currentUser || {
+      id: 'usr-caregiver-1',
+      name: 'Kumari',
+      role: 'caregiver',
+      phone: '0771234567',
+      email: 'kumari@example.com',
+    }
+  );
   const [patient, setPatient] = useState(null);
+  const [patientError, setPatientError] = useState('');
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
 
+  // Edit profile state
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(profileUser.name || '');
+  const [editPhone, setEditPhone] = useState(profileUser.phone || '');
+  const [editEmail, setEditEmail] = useState(profileUser.email || '');
+  const [editError, setEditError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
   useEffect(() => {
-    const links = dbService.getCareLinksForMember(currentUser?.id);
-    const activeLink = links.find(l => l.status === 'Active');
-    if (activeLink) {
-      const p = dbService.getUserById(activeLink.patientId);
-      setPatient(p);
+    if (currentUser) {
+      setProfileUser(currentUser);
     }
-  }, [currentUser?.id]);
+  }, [currentUser]);
+
+  useEffect(() => {
+    const loadLinkedPatient = async () => {
+      try {
+        setPatientError('');
+        const caregiverId = currentUser?.id || profileUser?.id || 'usr-caregiver-1';
+        const links = dbService.getCareLinksForMember(caregiverId);
+        const activeLink = links.find((l) => l.status === 'Active');
+        let patientRecord = null;
+        if (activeLink) {
+          patientRecord = dbService.getUserById(activeLink.patientId);
+        }
+        if (!patientRecord && (currentUser?.patientId || profileUser?.patientId)) {
+          const pid = currentUser?.patientId || profileUser?.patientId || 'usr-patient-1';
+          patientRecord = dbService.getUserById(pid);
+        }
+        setPatient(patientRecord || null);
+      } catch (err) {
+        console.error('CaregiverProfilesScreen error loading linked patient:', err);
+        setPatientError('Failed to load linked patient details.');
+      }
+    };
+    loadLinkedPatient();
+  }, [currentUser, profileUser]);
+
+  const handleStartEdit = () => {
+    setEditName(profileUser.name || '');
+    setEditPhone(profileUser.phone || '');
+    setEditEmail(profileUser.email || '');
+    setEditError('');
+    setIsEditing(true);
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      setEditError('Name cannot be empty.');
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(editEmail.trim())) {
+      setEditError('Please enter a valid email address.');
+      return;
+    }
+
+    setEditError('');
+    setIsSaving(true);
+    try {
+      const updated = await dbService.updateUser(profileUser.id, {
+        name: editName.trim(),
+        phone: editPhone.trim(),
+        email: editEmail.trim(),
+      });
+      if (updated) {
+        setProfileUser(updated);
+        if (currentUser) {
+          currentUser.name = updated.name;
+          currentUser.phone = updated.phone;
+          currentUser.email = updated.email;
+        }
+      } else {
+        setProfileUser((prev) => ({
+          ...prev,
+          name: editName.trim(),
+          phone: editPhone.trim(),
+          email: editEmail.trim(),
+        }));
+      }
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error updating profile in Firestore:', error);
+      setEditError('Failed to update profile. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleLogoutConfirm = async () => {
     setShowLogoutSheet(false);
@@ -54,44 +145,125 @@ export default function CaregiverProfilesScreen({
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {/* Caregiver Personal Information Card */}
-        <Text style={styles.sectionHeader}>PERSONAL INFORMATION</Text>
+        {/* Caregiver Personal Information Card Header */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionHeader}>PERSONAL INFORMATION</Text>
+          {!isEditing && (
+            <TouchableOpacity style={styles.editBtnRow} onPress={handleStartEdit}>
+              <Text style={styles.editBtnIcon}>✏️</Text>
+              <Text style={styles.editBtnText}>Edit</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-        {currentUser ? (
-          <View style={styles.patientCard}>
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{currentUser.name.charAt(0)}</Text>
+        {isEditing ? (
+          <View style={styles.editCard}>
+            {editError ? <Text style={styles.errorText}>{editError}</Text> : null}
+
+            <Text style={styles.inputLabel}>FULL NAME</Text>
+            <TextInput
+              style={styles.input}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Enter your name"
+            />
+
+            <Text style={styles.inputLabel}>ROLE (FIXED)</Text>
+            <View style={styles.readOnlyRoleRow}>
+              <Text style={styles.readOnlyRoleText}>
+                {profileUser.role === 'nurse' ? 'Nurse' : 'Caregiver'}
+              </Text>
             </View>
-            <View style={styles.patientInfo}>
-              <Text style={styles.patientName}>{currentUser.name}</Text>
-              <View style={styles.roleTag}>
-                <Text style={styles.roleTagText}>{currentUser.role === 'nurse' ? 'Nurse' : 'Caregiver'}</Text>
-              </View>
-              <Text style={styles.patientPhone}>{currentUser.phone}</Text>
-              <Text style={styles.patientEmail}>{currentUser.email}</Text>
+
+            <Text style={styles.inputLabel}>PHONE NUMBER</Text>
+            <TextInput
+              style={styles.input}
+              value={editPhone}
+              onChangeText={setEditPhone}
+              placeholder="Enter phone number"
+              keyboardType="phone-pad"
+            />
+
+            <Text style={styles.inputLabel}>EMAIL ADDRESS</Text>
+            <TextInput
+              style={styles.input}
+              value={editEmail}
+              onChangeText={setEditEmail}
+              placeholder="Enter email address"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <View style={styles.editActionsRow}>
+              <Button
+                title={isSaving ? "Saving..." : "Save changes"}
+                onPress={handleSaveProfile}
+                style={styles.saveProfileBtn}
+              />
+              <Button
+                title="Cancel"
+                variant="outline"
+                onPress={() => setIsEditing(false)}
+                style={styles.cancelProfileBtn}
+              />
             </View>
           </View>
-        ) : null}
-
-        {/* Linked Patient Card */}
-        <Text style={styles.sectionHeader}>LINKED PATIENT</Text>
-
-        {patient ? (
+        ) : (
           <View style={styles.patientCard}>
             <View style={styles.avatar}>
-              <Text style={styles.avatarText}>{patient.name.charAt(0)}</Text>
+              <Text style={styles.avatarText}>
+                {profileUser.name ? profileUser.name.charAt(0) : 'C'}
+              </Text>
+            </View>
+            <View style={styles.patientInfo}>
+              <Text style={styles.patientName}>{profileUser.name}</Text>
+              <View style={styles.roleTag}>
+                <Text style={styles.roleTagText}>
+                  {profileUser.role === 'nurse' ? 'Nurse' : 'Caregiver'}
+                </Text>
+              </View>
+              <Text style={styles.patientPhone}>{profileUser.phone}</Text>
+              <Text style={styles.patientEmail}>{profileUser.email}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Linked Patient Section */}
+        <Text style={styles.sectionHeader}>LINKED PATIENT</Text>
+
+        {patientError ? (
+          <View style={styles.emptyPatientCard}>
+            <Text style={styles.errorText}>{patientError}</Text>
+          </View>
+        ) : patient ? (
+          <TouchableOpacity
+            style={styles.patientCard}
+            onPress={() => navigation?.navigate('ManagePatientSchedule')}
+          >
+            <View style={styles.avatar}>
+              <Text style={styles.avatarText}>
+                {patient.name ? patient.name.charAt(0) : 'P'}
+              </Text>
             </View>
             <View style={styles.patientInfo}>
               <Text style={styles.patientName}>{patient.name}</Text>
               <Text style={styles.patientSub}>
-                {patient.gender} · {patient.age}
+                {patient.gender || 'Female'} · {patient.age || '68'} · Linked Patient
               </Text>
-              <Text style={styles.patientPhone}>{patient.phone}</Text>
+              <Text style={styles.patientPhone}>{patient.phone || '0771234567'}</Text>
             </View>
+            <Text style={styles.chevron}>›</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.emptyPatientCard}>
+            <Text style={styles.emptyPatientTitle}>No patient linked yet</Text>
+            <Text style={styles.emptyPatientSub}>
+              Linked patient details will appear here once connected.
+            </Text>
           </View>
-        ) : null}
+        )}
 
-        {/* Management Actions */}
+        {/* Remote Management */}
         <Text style={styles.sectionHeader}>REMOTE MANAGEMENT</Text>
 
         <View style={styles.cardGroup}>
@@ -172,13 +344,31 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 16,
+    marginBottom: 10,
+  },
   sectionHeader: {
     fontSize: 11,
     fontWeight: '800',
     color: '#94A3B8',
     letterSpacing: 0.5,
-    marginTop: 16,
-    marginBottom: 10,
+  },
+  editBtnRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  editBtnIcon: {
+    fontSize: 13,
+    marginRight: 4,
+  },
+  editBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0D8F7A',
   },
   patientCard: {
     backgroundColor: '#FFFFFF',
@@ -239,6 +429,79 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
+  },
+  emptyPatientCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    alignItems: 'center',
+  },
+  emptyPatientTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#475569',
+    marginBottom: 4,
+  },
+  emptyPatientSub: {
+    fontSize: 13,
+    color: '#94A3B8',
+    textAlign: 'center',
+  },
+  editCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#0D8F7A',
+    marginBottom: 10,
+  },
+  inputLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 0.5,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#CBD5E1',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    color: '#0F172A',
+    backgroundColor: '#F8FAFC',
+  },
+  readOnlyRoleRow: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  readOnlyRoleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748B',
+  },
+  editActionsRow: {
+    flexDirection: 'column',
+    gap: 8,
+    marginTop: 16,
+  },
+  saveProfileBtn: {
+    marginBottom: 0,
+  },
+  cancelProfileBtn: {
+    marginBottom: 0,
+  },
+  errorText: {
+    color: '#EF4444',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   cardGroup: {
     backgroundColor: '#FFFFFF',

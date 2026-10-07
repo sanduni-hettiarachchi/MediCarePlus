@@ -157,12 +157,14 @@ export default function RefillNotificationScreen({ navigation, route, onNavigate
         ) : null}
 
         {/* Add Medicine Button */}
-        <Button
-          title={t('addMedicine')}
-          onPress={() => navigation?.navigate('AddMedicineDetails')}
-          style={styles.addMedicineBtn}
-          variant="outline"
-        />
+        {medicines.length > 0 && (
+          <Button
+            title={t('addMedicine')}
+            onPress={() => navigation?.navigate('AddMedicineDetails')}
+            style={styles.addMedicineBtn}
+            variant="outline"
+          />
+        )}
       </ScrollView>
 
       <FiveTabBottomBar

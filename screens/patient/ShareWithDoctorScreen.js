@@ -25,77 +25,61 @@ export default function ShareWithDoctorScreen({ navigation, currentUser }) {
   useEffect(() => {
     let mounted = true;
     let intervalId = null;
-    const loadConsent = async () => {
-      const existing = await dbService.getConsentForScope(patientId, scope);
-      const expiry = existing?.expiresAt?.toMillis?.() || Number(existing?.expiresAt);
-      const now = Date.now();
+
+    const setupTimer = (consentObj) => {
+      if (intervalId) clearInterval(intervalId);
+      const expiry = consentObj?.expiresAt?.toMillis?.() || Number(consentObj?.expiresAt);
       
-      if (existing?.status === 'Active' && expiry > now) {
-        if (!mounted) return;
-        setConsentRecord(existing);
-        const remainingSeconds = Math.max(0, Math.floor((expiry - now) / 1000));
-        setTimeLeftSeconds(remainingSeconds);
-        setIsExpired(remainingSeconds === 0);
-        
-        // Generate access code
-        const code = generateAccessCode(existing.qrCode);
-        setAccessCode(code);
-        
-        // Start countdown timer
-        intervalId = setInterval(() => {
-          const currentNow = Date.now();
-          const newRemaining = Math.max(0, Math.floor((expiry - currentNow) / 1000));
-          if (mounted) {
-            setTimeLeftSeconds(newRemaining);
-            setIsExpired(newRemaining === 0);
+      intervalId = setInterval(async () => {
+        const currentNow = Date.now();
+        const newRemaining = Math.max(0, Math.floor((expiry - currentNow) / 1000));
+        if (mounted) {
+          setTimeLeftSeconds(newRemaining);
+          if (newRemaining <= 0) {
+            setIsExpired(true);
+            if (intervalId) clearInterval(intervalId);
+            // Automatically regenerate fresh access code
+            try {
+              const fresh = await dbService.generateAccessCode(patientId, scope);
+              if (mounted && fresh) {
+                setAccessCode(fresh.code);
+                setConsentRecord({ accessCode: fresh.code, expiresAt: fresh.expiresAt, patientId, scope });
+                setIsExpired(false);
+                setupTimer({ accessCode: fresh.code, expiresAt: fresh.expiresAt });
+              }
+            } catch (err) {
+              console.warn('[ShareWithDoctorScreen] Regeneration error:', err);
+            }
           }
-          if (newRemaining === 0 && intervalId) {
-            clearInterval(intervalId);
-          }
-        }, 1000);
-      } else {
-        const created = await dbService.addConsent({ patientId, patientName, scope });
-        if (!mounted) return;
-        setConsentRecord(created);
-        setTimeLeftSeconds(30 * 60);
-        setIsExpired(false);
-        
-        // Generate access code
-        const code = generateAccessCode(created.qrCode);
-        setAccessCode(code);
-        
-        // Start countdown timer
-        const newExpiry = created.expiresAt?.toMillis?.() || Number(created.expiresAt);
-        intervalId = setInterval(() => {
-          const currentNow = Date.now();
-          const newRemaining = Math.max(0, Math.floor((newExpiry - currentNow) / 1000));
-          if (mounted) {
-            setTimeLeftSeconds(newRemaining);
-            setIsExpired(newRemaining === 0);
-          }
-          if (newRemaining === 0 && intervalId) {
-            clearInterval(intervalId);
-          }
-        }, 1000);
-      }
+        }
+      }, 1000);
     };
-    loadConsent().catch(() => { if (mounted) setConsentRecord(null); });
-    return () => { 
+
+    const loadConsent = async () => {
+      const generated = await dbService.generateAccessCode(patientId, scope);
+      if (!mounted) return;
+
+      const now = Date.now();
+      const expiry = generated.expiresAt;
+      setAccessCode(generated.code);
+      setConsentRecord({ accessCode: generated.code, expiresAt: expiry, patientId, scope });
+      const remainingSeconds = Math.max(0, Math.floor((expiry - now) / 1000));
+      setTimeLeftSeconds(remainingSeconds);
+      setIsExpired(remainingSeconds === 0);
+
+      setupTimer({ accessCode: generated.code, expiresAt: expiry });
+    };
+
+    loadConsent().catch((err) => {
+      console.warn('[ShareWithDoctorScreen] loadConsent error:', err);
+      if (mounted) setConsentRecord(null);
+    });
+
+    return () => {
       mounted = false;
       if (intervalId) clearInterval(intervalId);
     };
   }, [patientId, patientName, scope]);
-
-  const generateAccessCode = (qrCode) => {
-    // Generate 8-character code avoiding confusing characters (0/O, 1/I)
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    let code = '';
-    for (let i = 0; i < 8; i++) {
-      code += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    // Format as K7M-4Q9X
-    return code.slice(0, 3) + '-' + code.slice(3);
-  };
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);

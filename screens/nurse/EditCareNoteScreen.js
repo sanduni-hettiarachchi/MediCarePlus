@@ -12,9 +12,9 @@ import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
-export default function EditCareNoteScreen({ navigation, route }) {
+export default function EditCareNoteScreen({ navigation, route, currentUser }) {
   const patient = route?.params?.patient || { name: 'Mrs. Perera', id: 'usr-patient-1' };
-  const nurse = route?.params?.nurse || { name: 'Nurse Dilani', nurseId: 'usr-nurse-1' };
+  const nurse = route?.params?.nurse || { name: 'Nurse Dilani', id: currentUser?.id };
   const existingNote = route?.params?.existingNote;
   const patientId = patient.id || 'usr-patient-1';
 
@@ -36,20 +36,23 @@ export default function EditCareNoteScreen({ navigation, route }) {
     }
   }, [existingNote]);
 
-  const handleSaveNote = () => {
+  const handleSaveNote = async () => {
     if (!noteText.trim()) return;
+    const authorId = currentUser?.id || nurse.id;
+    const authorName = currentUser?.name || nurse.name || 'Nurse Dilani';
 
     if (existingNote) {
-      dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
+      await dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
     } else {
       const noteData = {
         patientId,
-        authorId: nurse.nurseId || 'usr-nurse-1',
+        authorId,
+        authorName,
         authorRole: 'nurse',
         text: noteText.trim(),
         visibleToPatient: shareWithPatient,
       };
-      dbService.addCareNote(noteData);
+      await dbService.addCareNote(noteData);
     }
 
     setSavedSuccess(true);

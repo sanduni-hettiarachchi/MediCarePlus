@@ -12,24 +12,35 @@ import Header from '../../components/Header';
 import dbService from '../../services/db';
 
 export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
+  const routeRole = route?.params?.role;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-  const routeRole = route?.params?.role;
-  const [role, setRole] = useState(
-    routeRole === 'patient' || routeRole === 'caregiver' ? routeRole : 'patient'
-  );
+  const [role, setRole] = useState(routeRole || 'patient');
+  const [nurseId, setNurseId] = useState('N-2041');
+  const [slmcNumber, setSlmcNumber] = useState('12345');
+  const [pharmacyRegNo, setPharmacyRegNo] = useState('PH-778');
   const [errorMsg, setErrorMsg] = useState('');
 
+  const accountRole = role;
+
   const handleCreateAccount = async () => {
-    const accountRole = routeRole ?? role;
-    if (accountRole !== 'patient' && accountRole !== 'caregiver') {
-      setErrorMsg('Only patient and caregiver accounts can be created here.');
+    if (!name.trim() || !email.trim() || !password.trim()) {
+      setErrorMsg('Name, email, and password are required.');
       return;
     }
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      setErrorMsg('All fields are required.');
+
+    if (accountRole === 'nurse' && !nurseId.trim()) {
+      setErrorMsg('Nurse ID is required.');
+      return;
+    }
+    if (accountRole === 'doctor' && !slmcNumber.trim()) {
+      setErrorMsg('SLMC Registration Number is required.');
+      return;
+    }
+    if (accountRole === 'pharmacist' && !pharmacyRegNo.trim()) {
+      setErrorMsg('Pharmacy Registration Number is required.');
       return;
     }
 
@@ -40,12 +51,21 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
         phone: phone.trim(),
         password: password.trim(),
         role: accountRole,
+        nurseId: accountRole === 'nurse' ? nurseId.trim() : undefined,
+        slmcNumber: accountRole === 'doctor' ? slmcNumber.trim() : undefined,
+        pharmacyRegNo: accountRole === 'pharmacist' ? pharmacyRegNo.trim() : undefined,
       });
 
       if (onSignUpSuccess) {
         onSignUpSuccess(newUser);
       } else {
-        if (accountRole === 'caregiver') {
+        if (accountRole === 'nurse') {
+          navigation?.navigate('NurseMyPatients', { nurse: newUser });
+        } else if (accountRole === 'doctor') {
+          navigation?.navigate('ScanQRCode', { doctor: newUser });
+        } else if (accountRole === 'pharmacist') {
+          navigation?.navigate('PharmacistPatientMedicines', { pharmacist: newUser });
+        } else if (accountRole === 'caregiver') {
           navigation?.navigate('CaregiverProfiles');
         } else {
           navigation?.navigate('TodaysSchedule');
@@ -56,12 +76,23 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
     }
   };
 
+  const getHeaderTitle = () => {
+    switch (accountRole) {
+      case 'nurse': return 'Nurse sign up';
+      case 'doctor': return 'Doctor sign up';
+      case 'pharmacist': return 'Pharmacist sign up';
+      case 'caregiver': return 'Caregiver sign up';
+      default: return 'Create account';
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Header
-        title="Create account"
+        title={getHeaderTitle()}
         subtitle="Sign up for your new account"
         onBack={() => navigation?.goBack()}
+        colorScheme={accountRole === 'nurse' ? 'blue' : 'default'}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -73,7 +104,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="Mrs. Maya Perera"
+            placeholder={accountRole === 'doctor' ? 'Dr. K. Silva' : accountRole === 'nurse' ? 'Nurse Dilani' : 'Maya Perera'}
           />
         </View>
 
@@ -83,7 +114,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
             style={styles.input}
             value={email}
             onChangeText={setEmail}
-            placeholder="maya.perera@email.com"
+            placeholder="user@example.com"
             keyboardType="email-address"
             autoCapitalize="none"
           />
@@ -111,37 +142,63 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
           />
         </View>
 
+        {accountRole === 'nurse' && (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>NURSE ID</Text>
+            <TextInput
+              style={styles.input}
+              value={nurseId}
+              onChangeText={setNurseId}
+              placeholder="e.g. N-2041"
+            />
+          </View>
+        )}
+
+        {accountRole === 'doctor' && (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>SLMC REGISTRATION NUMBER</Text>
+            <TextInput
+              style={styles.input}
+              value={slmcNumber}
+              onChangeText={setSlmcNumber}
+              placeholder="e.g. 12345"
+            />
+          </View>
+        )}
+
+        {accountRole === 'pharmacist' && (
+          <View style={styles.fieldGroup}>
+            <Text style={styles.label}>PHARMACY REGISTRATION NUMBER</Text>
+            <TextInput
+              style={styles.input}
+              value={pharmacyRegNo}
+              onChangeText={setPharmacyRegNo}
+              placeholder="e.g. PH-778"
+            />
+          </View>
+        )}
+
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>I AM A</Text>
-          <View style={styles.roleRow}>
-            <TouchableOpacity
-              style={[styles.roleChip, role === 'patient' && styles.selectedRoleChip]}
-              onPress={() => setRole('patient')}
-            >
-              <Text
-                style={[
-                  styles.roleChipText,
-                  role === 'patient' && styles.selectedRoleChipText,
-                ]}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.roleRow}>
+            {[
+              { key: 'patient', label: 'Patient' },
+              { key: 'caregiver', label: 'Caregiver' },
+              { key: 'nurse', label: 'Nurse' },
+              { key: 'doctor', label: 'Doctor' },
+              { key: 'pharmacist', label: 'Pharmacist' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.key}
+                style={[styles.roleChip, role === item.key && styles.selectedRoleChip]}
+                onPress={() => setRole(item.key)}
               >
-                Patient
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.roleChip, role === 'caregiver' && styles.selectedRoleChip]}
-              onPress={() => setRole('caregiver')}
-            >
-              <Text
-                style={[
-                  styles.roleChipText,
-                  role === 'caregiver' && styles.selectedRoleChipText,
-                ]}
-              >
-                Caregiver
-              </Text>
-            </TouchableOpacity>
-          </View>
+                <Text style={[styles.roleChipText, role === item.key && styles.selectedRoleChipText]}>
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
         <Button
@@ -152,7 +209,7 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
 
         <View style={styles.loginRow}>
           <Text style={styles.loginQuestion}>Already have an account? </Text>
-          <TouchableOpacity onPress={() => navigation?.navigate('Login')}>
+          <TouchableOpacity onPress={() => navigation?.goBack()}>
             <Text style={styles.loginLink}>Sign in</Text>
           </TouchableOpacity>
         </View>

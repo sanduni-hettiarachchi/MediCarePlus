@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -10,6 +10,7 @@ import NotificationCard from '../../components/NotificationCard';
 import Text from '../../components/PatientText';
 import OfflineBanner from '../../components/OfflineBanner';
 import { useT } from '../../i18n/LanguageContext';
+import dbService from '../../services/db';
 
 const initialNotifications = [
   {
@@ -19,6 +20,7 @@ const initialNotifications = [
     messageKey: 'notificationReminderMessage',
     timeKey: 'timeTenMinutes',
     read: false,
+    createdAt: Date.now() - 600000,
   },
   {
     id: 'n2',
@@ -27,6 +29,7 @@ const initialNotifications = [
     messageKey: 'notificationLowStockMessage',
     timeKey: 'timeOneHour',
     read: false,
+    createdAt: Date.now() - 3600000,
   },
   {
     id: 'n3',
@@ -35,6 +38,7 @@ const initialNotifications = [
     messageKey: 'notificationAppointmentMessage',
     timeKey: 'timeThreeHours',
     read: true,
+    createdAt: Date.now() - 10800000,
   },
   {
     id: 'n4',
@@ -43,22 +47,79 @@ const initialNotifications = [
     messageKey: 'notificationDoseMessage',
     timeKey: 'timeFiveHours',
     read: true,
+    createdAt: Date.now() - 18000000,
   },
 ];
 
-export default function NotificationsScreen({ navigation, isOffline = false, onRetryOffline }) {
+export default function NotificationsScreen({ navigation, route, isOffline = false, onRetryOffline, currentUser }) {
   const t = useT();
   const [activeFilter, setActiveFilter] = useState('all');
   const [notifications, setNotifications] = useState(initialNotifications);
+  const [errorText, setErrorText] = useState(null);
+  const userId = currentUser?.id || route?.params?.currentUser?.id;
+
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp) return 'Just now';
+    const millis = timestamp?.toMillis?.() || Number(timestamp);
+    if (!Number.isFinite(millis)) return 'Just now';
+    const diffMins = Math.floor((Date.now() - millis) / 60000);
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) return `${diffHours}h ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays}d ago`;
+  };
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const unsubscribe = dbService.subscribeToNotifications(
+      userId,
+      (dbNotifs) => {
+        const formattedDb = dbNotifs.map((n) => ({
+          id: n.id,
+          categoryKey: n.categoryKey || n.type || 'updates',
+          title: n.title || (n.titleKey ? t(n.titleKey) : 'Notification'),
+          message: n.body || n.message || (n.messageKey ? t(n.messageKey) : ''),
+          time: n.time || formatTimeAgo(n.createdAt),
+          read: n.read || false,
+          createdAt: n.createdAt?.toMillis?.() || Number(n.createdAt) || Date.now(),
+        }));
+
+        // Merge initial sample notifications with real-time notifications
+        const mergedMap = new Map();
+        initialNotifications.forEach((item) => mergedMap.set(item.id, item));
+        formattedDb.forEach((item) => mergedMap.set(item.id, item));
+
+        const mergedList = Array.from(mergedMap.values()).sort(
+          (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
+        );
+        setNotifications(mergedList);
+      },
+      (err) => {
+        console.error('[NotificationsScreen] subscription error:', err);
+        setErrorText(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
+      }
+    );
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [userId]);
 
   const filtered = notifications.filter((n) => {
     if (activeFilter === 'all') return true;
-    return n.categoryKey === activeFilter;
+    const cat = n.categoryKey || n.type || 'updates';
+    if (activeFilter === 'medicine' && (cat === 'medicine' || cat === 'medication')) return true;
+    if (activeFilter === 'alerts' && (cat === 'alerts' || cat === 'alert')) return true;
+    if (activeFilter === 'updates' && (cat === 'updates' || cat === 'update' || cat === 'care_note')) return true;
+    return cat === activeFilter;
   });
 
   const handleMarkRead = (id) => {
-    setNotifications(
-      notifications.map((n) => (n.id === id ? { ...n, read: true } : n))
+    dbService.markNotificationAsRead(id);
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
     );
   };
 
@@ -72,6 +133,12 @@ export default function NotificationsScreen({ navigation, isOffline = false, onR
   return (
     <View style={styles.container}>
       <Header title={t('notifications')} onBack={() => navigation?.goBack()} />
+
+      {errorText ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{errorText}</Text>
+        </View>
+      ) : null}
 
       {/* Filter Tabs */}
       <View style={styles.filterRow}>
@@ -102,10 +169,10 @@ export default function NotificationsScreen({ navigation, isOffline = false, onR
         {filtered.map((item) => {
           const notification = {
             ...item,
-            category: t(item.categoryKey),
-            title: t(item.titleKey),
-            message: t(item.messageKey),
-            time: t(item.timeKey),
+            category: item.categoryKey ? t(item.categoryKey) : 'Updates',
+            title: item.title || (item.titleKey ? t(item.titleKey) : 'Notification'),
+            message: item.message || (item.messageKey ? t(item.messageKey) : ''),
+            time: item.time || (item.timeKey ? t(item.timeKey) : 'Just now'),
           };
           return <NotificationCard key={item.id} notification={notification} onPress={() => handleMarkRead(item.id)} />;
         })}
@@ -153,5 +220,18 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontSize: 16,
     textAlign: 'center',
+  },
+  errorBox: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: '#FEE2E2',
+    borderRadius: 8,
+    marginHorizontal: 16,
+    marginTop: 8,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

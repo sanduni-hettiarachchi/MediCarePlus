@@ -14,12 +14,12 @@ export default function LandingScreen({ navigation, onSelectRole }) {
   const handleGetStarted = () => {
     if (onSelectRole) onSelectRole(selectedRole);
 
-    if (selectedRole === 'patient') {
-      navigation?.navigate('SignUp');
-    } else if (selectedRole === 'nurse') {
+    if (selectedRole === 'nurse') {
       navigation?.navigate('NurseSignIn');
     } else if (selectedRole === 'doctor') {
       navigation?.navigate('DoctorSignIn');
+    } else {
+      navigation?.navigate('Login');
     }
   };
 

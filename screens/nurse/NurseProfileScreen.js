@@ -27,7 +27,7 @@ export default function NurseProfileScreen({ navigation, route, onLogout }) {
   const [age, setAge] = useState(nurse.age || '');
   const [email, setEmail] = useState(nurse.email || '');
   const [phone, setPhone] = useState(nurse.phone || '');
-  const [nurseId, setNurseId] = useState(nurse.nurseId || '');
+  const [nurseId, setNurseId] = useState(nurse.nurseId ? nurse.nurseId : '');
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [formError, setFormError] = useState('');

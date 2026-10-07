@@ -28,7 +28,7 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
 
     try {
       const activeNurse = await dbService.signInProfessionalFirebase(email.trim(), password.trim());
-      if (activeNurse.role !== 'nurse' || String(activeNurse.nurseId || '') !== nurseId.trim()) {
+      if (activeNurse.role !== 'nurse' || String(activeNurse.nurseId ?? '') !== nurseId.trim()) {
         setErrorMsg('Invalid nurse credentials, role or Nurse ID.');
         return;
       }
@@ -105,6 +105,13 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
           onPress={handleSignIn}
           style={styles.signInBtn}
         />
+
+        <View style={styles.signUpRow}>
+          <Text style={styles.signUpQuestion}>Don't have a nurse account? </Text>
+          <TouchableOpacity onPress={() => navigation?.navigate('SignUp', { role: 'nurse' })}>
+            <Text style={styles.signUpLink}>Sign up as a Nurse</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.adminContactBox}>
           <Text style={styles.adminText}>
@@ -183,7 +190,22 @@ const styles = StyleSheet.create({
     color: '#007AFF',
   },
   signInBtn: {
-    marginBottom: 20,
+    marginBottom: 14,
+  },
+  signUpRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  signUpQuestion: {
+    fontSize: 14,
+    color: '#64748B',
+  },
+  signUpLink: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#007AFF',
   },
   adminContactBox: {
     backgroundColor: '#EFF6FF',

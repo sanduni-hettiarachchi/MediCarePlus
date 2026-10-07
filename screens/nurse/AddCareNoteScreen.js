@@ -11,15 +11,15 @@ import Header from '../../components/Header';
 import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
-export default function AddCareNoteScreen({ navigation, route }) {
+export default function AddCareNoteScreen({ navigation, route, currentUser }) {
   const patient = route?.params?.patient || { name: 'Mrs. Perera', id: 'usr-patient-1' };
-  const nurse = route?.params?.nurse || { name: 'Nurse Dilani', nurseId: 'usr-nurse-1' };
+  const nurse = route?.params?.nurse || { name: 'Nurse Dilani', id: currentUser?.id };
   const existingNote = route?.params?.existingNote;
   const patientId = patient.id || 'usr-patient-1';
 
   const [noteText, setNoteText] = useState(existingNote ? existingNote.text || existingNote.note : '');
   const [dateTimeStr, setDateTimeStr] = useState('');
-  const [shareWithPatient, setShareWithPatient] = useState(existingNote ? existingNote.visibleToPatient : false);
+  const [shareWithPatient, setShareWithPatient] = useState(existingNote ? existingNote.visibleToPatient : true);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showToast, setShowToast] = useState(false);
 
@@ -30,30 +30,49 @@ export default function AddCareNoteScreen({ navigation, route }) {
     setDateTimeStr(formatted);
   }, []);
 
-  const handleSaveNote = () => {
-    if (!noteText.trim()) return;
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const handleSaveNote = async () => {
+    if (!noteText.trim() || saving) return;
+
+    setSaving(true);
+    setErrorMessage('');
+    setSavedSuccess(false);
+
+    const authorId = currentUser?.id || nurse.id;
+    const authorName = currentUser?.name || nurse.name || 'Nurse Dilani';
 
     const noteData = {
       patientId,
-      authorId: nurse.nurseId || 'usr-nurse-1',
+      authorId,
+      authorName,
       authorRole: 'nurse',
       text: noteText.trim(),
+      note: noteText.trim(),
       visibleToPatient: shareWithPatient,
     };
 
-    if (existingNote) {
-      dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
-    } else {
-      dbService.addCareNote(noteData);
-    }
+    try {
+      if (existingNote) {
+        await dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
+      } else {
+        await dbService.addCareNote(noteData);
+      }
 
-    setSavedSuccess(true);
-    setShowToast(true);
-    
-    setTimeout(() => {
-      setShowToast(false);
-      navigation?.goBack();
-    }, 1500);
+      setSavedSuccess(true);
+      setShowToast(true);
+
+      setTimeout(() => {
+        setShowToast(false);
+        navigation?.goBack();
+      }, 1200);
+    } catch (err) {
+      console.error('Save care note error:', err);
+      setErrorMessage(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -72,12 +91,18 @@ export default function AddCareNoteScreen({ navigation, route }) {
           </View>
         )}
 
+        {errorMessage ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>⚠️ {errorMessage}</Text>
+          </View>
+        ) : null}
+
         <View style={styles.card}>
           <Text style={styles.label}>NOTE</Text>
           <TextInput
             style={styles.textArea}
             value={noteText}
-            onChangeText={setNoteText}
+            onChangeText={(txt) => { setNoteText(txt); setErrorMessage(''); }}
             placeholder="Type clinical observations or recommendations..."
             placeholderTextColor="#94A3B8"
             multiline
@@ -103,9 +128,10 @@ export default function AddCareNoteScreen({ navigation, route }) {
           />
 
           <Button
-            title="Save Note"
+            title={saving ? 'Saving...' : 'Save Note'}
             colorScheme="blue"
             onPress={handleSaveNote}
+            disabled={saving || !noteText.trim()}
             style={styles.saveBtn}
           />
         </View>
@@ -136,6 +162,20 @@ const styles = StyleSheet.create({
     color: '#007AFF',
     fontSize: 14,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
   },
   card: {
