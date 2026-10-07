@@ -27,6 +27,7 @@ export default function TodaysScheduleScreen({
   const language = userPreferences.language || 'en';
   const t = useT();
   const patientId = currentUser?.id || 'usr-patient-1';
+  const userRole = currentUser?.role || 'patient';
   const { firestore } = getFirebaseServices();
 
   const [doses, setDoses] = useState([]);
@@ -153,8 +154,7 @@ export default function TodaysScheduleScreen({
     const selectedDateKey = formatDateKey(selectedDate);
 
     const initSchedule = async () => {
-      await dbService.cleanupDuplicateRemindersAndLogs(patientId);
-      await dbService.ensureDailyDoseLogs(patientId, selectedDateKey);
+      await dbService.ensureDailyDoseLogs(patientId, userRole, selectedDateKey);
 
       if (!firestore || isOffline) {
         const logs = dbService.getDoseLogs(patientId);

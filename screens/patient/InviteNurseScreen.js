@@ -11,9 +11,10 @@ import Header from '../../components/Header';
 import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
-export default function InviteNurseScreen({ navigation, route }) {
-  const patientId = route?.params?.patientId || 'usr-patient-1';
+export default function InviteNurseScreen({ navigation, route, currentUser }) {
+  const patientId = route?.params?.patientId || currentUser?.id || 'usr-patient-1';
   const onAdd = route?.params?.onAdd;
+  const patientName = currentUser?.name || 'Patient';
   
   const [searchQuery, setSearchQuery] = useState('');
   const [permissions, setPermissions] = useState({
@@ -65,6 +66,8 @@ export default function InviteNurseScreen({ navigation, route }) {
       role: 'nurse',
       status: 'Pending',
       permissions,
+      email: user.email,
+      addedBy: patientName,
     });
     
     setLoading(false);

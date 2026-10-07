@@ -98,6 +98,8 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
               <View style={styles.infoCol}>
                 <Text style={styles.name}>{item.memberName}</Text>
                 <Text style={styles.roleText}>{item.role === 'caregiver' ? 'Caregiver' : item.role}</Text>
+                {item.email && <Text style={styles.emailText}>{item.email}</Text>}
+                {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
                 {item.status === 'Pending' && (
                   <View style={styles.pendingTag}>
                     <Text style={styles.pendingTagText}>Pending</Text>
@@ -139,6 +141,8 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
               <View style={styles.infoCol}>
                 <Text style={styles.name}>{item.memberName}</Text>
                 <Text style={styles.roleText}>{item.role === 'nurse' ? 'Nurse' : item.role}</Text>
+                {item.email && <Text style={styles.emailText}>{item.email}</Text>}
+                {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
               </View>
 
               <TouchableOpacity
@@ -205,7 +209,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
             </View>
 
             <ScrollView contentContainerStyle={styles.addPersonContent} showsVerticalScrollIndicator={false}>
-              <TouchableOpacity style={styles.roleCard} onPress={() => navigation?.navigate('InviteCaregiver', { patientId, onAdd: () => setShowAddPersonScreen(false) })}>
+              <TouchableOpacity style={styles.roleCard} onPress={() => navigation?.navigate('InviteCaregiver', { patientId, currentUser, onAdd: () => setShowAddPersonScreen(false) })}>
                 <View style={styles.roleCardIcon}>
                   <Text style={styles.roleCardIconText}>👨‍👩‍👧</Text>
                 </View>
@@ -213,7 +217,7 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
                 <Text style={styles.roleCardDesc}>Family member or friend who helps with daily care and medication reminders</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.roleCard} onPress={() => navigation?.navigate('InviteNurse', { patientId, onAdd: () => setShowAddPersonScreen(false) })}>
+              <TouchableOpacity style={styles.roleCard} onPress={() => navigation?.navigate('InviteNurse', { patientId, currentUser, onAdd: () => setShowAddPersonScreen(false) })}>
                 <View style={[styles.roleCardIcon, styles.nurseIcon]}>
                   <Text style={styles.roleCardIconText}>👩‍⚕️</Text>
                 </View>
@@ -421,6 +425,17 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#64748B',
     marginTop: 2,
+  },
+  emailText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  addedByText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 2,
+    fontStyle: 'italic',
   },
   accessTag: {
     fontSize: 11,

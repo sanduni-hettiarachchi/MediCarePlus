@@ -36,11 +36,9 @@ export default function CaregiverActivityScreen({ navigation, onNavigateTab, use
   useEffect(() => {
     const stopAlerts = dbService.subscribeToAlerts(patientId, setAlerts, (error) => {
       console.error('ACTIVITY SCREEN ALERTS ERROR:', error);
-      setErrorMessage(`ALERTS ERROR [${error?.code || 'unknown'}]: ${error?.message || error}`);
     });
     const stopLogs = dbService.subscribeToDoseLogs(patientId, (logs) => setTodayLogs(logs.filter(isTodayLog)), (error) => {
       console.error('ACTIVITY SCREEN DOSE LOGS ERROR:', error);
-      setErrorMessage(`DOSE LOGS ERROR [${error?.code || 'unknown'}]: ${error?.message || error}`);
     });
     return () => { stopAlerts?.(); stopLogs?.(); };
   }, [patientId]);

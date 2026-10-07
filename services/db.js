@@ -1148,9 +1148,9 @@ export const dbService = {
   getCareLinksForMember(memberId) {
     return localCache.care_links.filter((c) => c.memberId === memberId);
   },
-  async addCareLink({ patientId, memberId, memberName, role, permissions = {}, status = 'Active' }) {
+  async addCareLink({ patientId, memberId, memberName, role, permissions = {}, status = 'Active', email = null, addedBy = null }) {
     const id = `${patientId}_${memberId}`;
-    const link = { id, patientId, memberId, memberName, role, status, permissions, createdAt: Date.now() };
+    const link = { id, patientId, memberId, memberName, role, status, permissions, email, addedBy, createdAt: Date.now() };
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
       await setDoc(doc(firestoreDb, 'care_links', id), {
