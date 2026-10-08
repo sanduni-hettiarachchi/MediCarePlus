@@ -28,233 +28,19 @@ import { getFirebaseServices } from '../firebase/firebaseConfig';
 const ASYNC_STORAGE_KEY = '@medicare_plus_db_v3';
 
 const initialSeedData = {
-  users: [
-    {
-      id: 'usr-patient-1',
-      name: 'Mrs. Perera',
-      email: 'maya.perera@email.com',
-      phone: '+94 77 123 4567',
-      role: 'patient',
-      password: 'password123',
-      gender: 'Female',
-      age: '58 years',
-      language: 'en',
-      largeText: false,
-      highContrast: false,
-      voiceReminders: true,
-    },
-    {
-      id: 'usr-caregiver-1',
-      name: 'Kumari (Daughter)',
-      email: 'kumari@email.com',
-      phone: '+94 77 987 6543',
-      role: 'caregiver',
-      password: 'password123',
-      patientId: 'usr-patient-1',
-    },
-    {
-      id: 'usr-doctor-1',
-      name: 'Dr. K. Silva',
-      email: 'dr.silva@hospital.lk',
-      phone: '+94 71 234 5678',
-      role: 'doctor',
-      password: 'password123',
-      slmcNumber: '12345',
-    },
-    {
-      id: 'usr-nurse-1',
-      name: 'Nurse Dilani',
-      email: 'dilani@careteam.lk',
-      phone: '+94 76 345 6789',
-      role: 'nurse',
-      password: 'password123',
-      nurseId: 'N-2041',
-    },
-    {
-      id: 'usr-pharmacist-1',
-      name: 'Mr. Jayasuriya',
-      email: 'jayasuriya@pharmacy.lk',
-      phone: '+94 75 456 7890',
-      role: 'pharmacist',
-      password: 'password123',
-      pharmacyRegNo: 'PH-778',
-    },
-  ],
-  medicines: [
-    {
-      id: 'med-1',
-      patientId: 'usr-patient-1',
-      name: 'Paracetamol XL2',
-      dose: '500 mg',
-      mealInstruction: 'After breakfast',
-      notes: 'Avoid if fever below 100°F',
-      stockDays: 12,
-      active: true,
-      refillStatus: 'OK',
-    },
-    {
-      id: 'med-2',
-      patientId: 'usr-patient-1',
-      name: 'Blood pressure tablet',
-      dose: '1 tablet',
-      mealInstruction: 'After lunch',
-      notes: 'Take with full glass of water',
-      stockDays: 3,
-      active: true,
-      refillStatus: 'Refill now',
-    },
-    {
-      id: 'med-3',
-      patientId: 'usr-patient-1',
-      name: 'DPP-4 Inhibitors',
-      dose: '100 mg',
-      mealInstruction: 'After dinner',
-      notes: 'Take after daily meal',
-      stockDays: 5,
-      active: true,
-      refillStatus: 'Refill soon',
-    },
-    {
-      id: 'med-4',
-      patientId: 'usr-patient-1',
-      name: 'Atorvastatin',
-      dose: '10 mg',
-      mealInstruction: 'Before bedtime',
-      notes: 'Take at night',
-      stockDays: 0,
-      active: true,
-      refillStatus: 'Out of stock',
-    },
-  ],
-  reminder_times: [
-    { id: 'rt-1', medicineId: 'med-1', timeStr: '8:00 AM' },
-    { id: 'rt-2', medicineId: 'med-2', timeStr: '1:00 PM' },
-    { id: 'rt-3', medicineId: 'med-3', timeStr: '7:00 PM' },
-    { id: 'rt-4', medicineId: 'med-4', timeStr: '9:00 PM' },
-  ],
-  dose_logs: [
-    {
-      id: 'dl-1',
-      medicineId: 'med-1',
-      patientId: 'usr-patient-1',
-      medicineName: 'Paracetamol XL2',
-      dose: '500 mg',
-      time: '9:00 AM',
-      date: 'Today',
-      status: 'Taken',
-      timestamp: Date.now() - 7200000,
-    },
-    {
-      id: 'dl-2',
-      medicineId: 'med-2',
-      patientId: 'usr-patient-1',
-      medicineName: 'Blood pressure tablet',
-      dose: '1 tablet',
-      time: '1:00 PM',
-      date: 'Today',
-      status: 'Pending',
-      timestamp: Date.now(),
-    },
-    {
-      id: 'dl-3',
-      medicineId: 'med-3',
-      patientId: 'usr-patient-1',
-      medicineName: 'DPP-4 Inhibitors',
-      dose: '100 mg',
-      time: '7:00 PM',
-      date: 'Today',
-      status: 'Upcoming',
-      timestamp: Date.now() + 18000000,
-    },
-  ],
-  care_links: [
-    {
-      id: 'link-usr-patient-1_usr-caregiver-1',
-      patientId: 'usr-patient-1',
-      memberId: 'usr-caregiver-1',
-      memberName: 'Kumari (Daughter)',
-      role: 'caregiver',
-      status: 'Active',
-      permissions: { viewSchedule: true, viewAdherence: true, receiveAlerts: true, editSchedule: false, viewCareNotes: true, addNotes: false, contact: true },
-      createdAt: Date.now() - 86400000,
-    },
-  ],
-  alerts: [
-    {
-      id: 'alt-1',
-      patientId: 'usr-patient-1',
-      type: 'missed_dose',
-      message: 'Missed 1:00 PM Blood pressure tablet',
-      handled: false,
-      timestamp: Date.now() - 3600000,
-    },
-  ],
-  refill_requests: [
-    {
-      id: 'rr-1',
-      medicineId: 'med-2',
-      patientId: 'usr-patient-1',
-      status: 'requested',
-      timestamp: Date.now() - 86400000,
-    },
-  ],
-  care_notes: [
-    {
-      id: 'cn-1',
-      patientId: 'usr-patient-1',
-      authorId: 'usr-caregiver-1',
-      authorRole: 'caregiver',
-      text: 'She skips the afternoon dose when visitors come.',
-      visibleToPatient: true,
-      createdAt: Date.now() - 14400000,
-      editedAt: null,
-    },
-  ],
+  users: [],
+  medicines: [],
+  reminder_times: [],
+  dose_logs: [],
+  care_links: [],
+  alerts: [],
+  refill_requests: [],
+  care_notes: [],
+  refill_summary: [],
   access_codes: [],
   grants: [],
+  notifications: [],
   access_logs: [],
-  refill_summary: [
-    {
-      id: 'rs-med-1',
-      patientId: 'usr-patient-1',
-      medicineId: 'med-1',
-      name: 'Paracetamol XL2',
-      dose: '500 mg',
-      stockDays: 12,
-      status: 'OK',
-      updatedAt: Date.now(),
-    },
-    {
-      id: 'rs-med-2',
-      patientId: 'usr-patient-1',
-      medicineId: 'med-2',
-      name: 'Blood pressure tablet',
-      dose: '1 tablet',
-      stockDays: 3,
-      status: 'Refill now',
-      updatedAt: Date.now(),
-    },
-    {
-      id: 'rs-med-3',
-      patientId: 'usr-patient-1',
-      medicineId: 'med-3',
-      name: 'DPP-4 Inhibitors',
-      dose: '100 mg',
-      stockDays: 5,
-      status: 'Refill soon',
-      updatedAt: Date.now(),
-    },
-    {
-      id: 'rs-med-4',
-      patientId: 'usr-patient-1',
-      medicineId: 'med-4',
-      name: 'Atorvastatin',
-      dose: '10 mg',
-      stockDays: 0,
-      status: 'Out of stock',
-      updatedAt: Date.now(),
-    },
-  ],
 };
 
 let localCache = JSON.parse(JSON.stringify(initialSeedData));
@@ -302,10 +88,27 @@ const getFirebaseAuth = () => {
   }
 };
 
+// Build a consistent user object with Firebase uid as id and uid
+const buildCurrentUser = (firebaseUser, profileDoc = {}) => {
+  const uid = firebaseUser?.uid || firebaseUser?.id;
+  if (!uid) {
+    console.warn('[buildCurrentUser] No uid provided');
+    return null;
+  }
+  // Spread profile first, then set id and uid to ensure Firebase uid is never overwritten
+  return {
+    ...profileDoc,
+    id: uid,
+    uid: uid,
+  };
+};
+
+export { buildCurrentUser };
+
 export function getActivePatientId(currentUser) {
-  if (!currentUser) return 'usr-patient-1';
+  if (!currentUser) return null;
   if (currentUser.role === 'patient' || !currentUser.role) {
-    return currentUser.id || 'usr-patient-1';
+    return currentUser.id;
   }
   if (currentUser.role === 'caregiver') {
     if (currentUser.patientId) return currentUser.patientId;
@@ -315,7 +118,7 @@ export function getActivePatientId(currentUser) {
     if (activeLink?.patientId) return activeLink.patientId;
     return currentUser.patientId || currentUser.id;
   }
-  return currentUser.id || 'usr-patient-1';
+  return currentUser.id;
 }
 
 export const dbService = {
@@ -351,7 +154,7 @@ export const dbService = {
     if (!profileSnapshot.exists()) {
       throw new Error('Professional account profile not found. Contact your administrator.');
     }
-    return { id: credential.user.uid, ...profileSnapshot.data() };
+    return buildCurrentUser(credential.user, profileSnapshot.data());
   },
 
   async signUpFirebase(userData) {
@@ -381,6 +184,12 @@ export const dbService = {
       ...userData,
       role,
     };
+    // Remove undefined values to avoid writing them to Firestore
+    Object.keys(newUser).forEach(key => {
+      if (newUser[key] === undefined) {
+        delete newUser[key];
+      }
+    });
     localCache.users = localCache.users.filter((u) => u.id !== userId && u.email !== userData.email).concat(newUser);
     persistLocalCache();
     const firestoreDb = getFirestoreDb();
@@ -481,8 +290,9 @@ export const dbService = {
   },
 
   // MEDICINES & REMINDER TIMES
-  getMedicines(patientId = 'usr-patient-1') {
-    return localCache.medicines.filter((m) => m.patientId === patientId && !m.deleted);
+  getMedicines(patientId) {
+    if (!patientId) return [];
+    return localCache.medicines.filter((m) => m.patientId === patientId);
   },
   getMedicineById(id) {
     return localCache.medicines.find((m) => m.id === id && !m.deleted) || null;
@@ -492,7 +302,12 @@ export const dbService = {
   },
   addMedicine(medData, timesList = []) {
     const medId = `med-${Date.now()}`;
-    const patientId = medData.patientId || 'usr-patient-1';
+    const patientId = medData.patientId;
+    if (!patientId) {
+      throw new Error('patientId is required to add medicine');
+    }
+    console.log('[dbService.addMedicine] Adding medicine:', medId, 'patientId:', patientId);
+
     const newMed = {
       id: medId,
       patientId,
@@ -516,6 +331,7 @@ export const dbService = {
       enabled: true,
       createdAt: Date.now(),
     }));
+    console.log('[dbService.addMedicine] Creating', timeEntries.length, 'reminder_times for medicine:', medId);
 
     // Add to local cache
     localCache.medicines.push(newMed);
@@ -528,17 +344,22 @@ export const dbService = {
     // Save to Firestore with transaction if available
     if (firestoreDb) {
       return runTransaction(firestoreDb, async (transaction) => {
+        console.log('[dbService.addMedicine] Transaction set: medicines/', newMed.firestoreId || newMed.id, 'patientId:', patientId);
         transaction.set(doc(firestoreDb, 'medicines', newMed.firestoreId || newMed.id), newMed);
         timeEntries.forEach((te) => {
           const timeDocRef = doc(firestoreDb, 'reminder_times', te.id);
+          console.log('[dbService.addMedicine] Transaction set: reminder_times/', te.id, 'patientId:', te.patientId);
           transaction.set(timeDocRef, {
             ...te,
             createdAt: serverTimestamp(),
           });
         });
-      }).then(() => ({ medicine: newMed, times: timeEntries }))
+      }).then(() => {
+        console.log('[dbService.addMedicine] Transaction committed successfully');
+        return { medicine: newMed, times: timeEntries };
+      })
         .catch((e) => {
-          console.warn('Firestore transaction error:', e);
+          console.error('[dbService.addMedicine] Transaction error:', e?.code, e?.message);
           // Rollback local cache on error
           localCache.medicines = localCache.medicines.filter((m) => m.id !== medId);
           localCache.reminder_times = localCache.reminder_times.filter((rt) => rt.medicineId !== medId);
@@ -552,6 +373,7 @@ export const dbService = {
   async updateMedicine(id, updates, timesList = null) {
     const idx = localCache.medicines.findIndex((m) => m.id === id);
     if (idx !== -1) {
+      console.log('[dbService.updateMedicine] Updating medicine:', id, 'patientId:', localCache.medicines[idx].patientId);
       localCache.medicines[idx] = { ...localCache.medicines[idx], ...updates };
       let newTimes = [];
 
@@ -560,7 +382,7 @@ export const dbService = {
         newTimes = timesList.map((timeStr, i) => ({
           id: `rt-${Date.now()}-${i}`,
           medicineId: id,
-          patientId: localCache.medicines[idx].patientId || 'usr-patient-1',
+          patientId: localCache.medicines[idx].patientId,
           time: timeStr,
           timeStr,
           enabled: true,
@@ -573,11 +395,16 @@ export const dbService = {
       const firestoreDb = getFirestoreDb();
       if (firestoreDb) {
         try {
+          console.log('[dbService.updateMedicine] Update: medicines/', localCache.medicines[idx].firestoreId || id);
           await updateDoc(doc(firestoreDb, 'medicines', localCache.medicines[idx].firestoreId || id), updates);
 
           if (timesList !== null) {
-            const patientId = localCache.medicines[idx].patientId || 'usr-patient-1';
+            const patientId = localCache.medicines[idx].patientId;
+            if (!patientId) {
+              throw new Error('patientId is required to update medicine times');
+            }
             // Delete old reminder_times for this medicine from Firestore
+            console.log('[dbService.updateMedicine] Query: reminder_times where patientId ==', patientId, 'AND medicineId ==', id);
             const rSnap = await getDocs(
               query(
                 collection(firestoreDb, 'reminder_times'),
@@ -585,11 +412,14 @@ export const dbService = {
                 where('medicineId', '==', id)
               )
             );
+            console.log('[dbService.updateMedicine] Found', rSnap.docs.length, 'reminder_times to delete');
             for (const rDoc of rSnap.docs) {
+              console.log('[dbService.updateMedicine] Delete: reminder_times/', rDoc.id, 'patientId:', rDoc.data().patientId);
               await deleteDoc(doc(firestoreDb, 'reminder_times', rDoc.id));
             }
             // Add new reminder_times
             for (const nt of newTimes) {
+              console.log('[dbService.updateMedicine] Create: reminder_times/', nt.id, 'patientId:', nt.patientId);
               await setDoc(doc(firestoreDb, 'reminder_times', nt.id), {
                 ...nt,
                 createdAt: serverTimestamp(),
@@ -597,7 +427,8 @@ export const dbService = {
             }
           }
         } catch (e) {
-          console.warn('Firestore update medicine error:', e);
+          console.error('[dbService.updateMedicine] error:', e?.code, e?.message);
+          throw e;
         }
       }
 
@@ -614,7 +445,12 @@ export const dbService = {
     const deletedDoseLogs = localCache.dose_logs.filter((dl) => dl.medicineId === id);
     const deletedRefillSummary = localCache.refill_summary?.find((rs) => rs.medicineId === id || rs.id === `rs-${id}`);
 
-    const pId = targetPatientId || deletedMed?.patientId || 'usr-patient-1';
+    const pId = targetPatientId || deletedMed?.patientId;
+    if (!pId) {
+      throw new Error('patientId is required to delete medicine');
+    }
+
+    console.log('[dbService.deleteMedicine] Deleting medicine:', id, 'patientId:', pId, 'deletedMed.patientId:', deletedMed?.patientId);
 
     // Remove from localCache
     localCache.medicines = localCache.medicines.filter((m) => m.id !== id);
@@ -632,9 +468,11 @@ export const dbService = {
 
         // Delete medicines/{id}
         const medRef = doc(firestoreDb, 'medicines', deletedMed?.firestoreId || id);
+        console.log('[dbService.deleteMedicine] Batch delete: medicines/', deletedMed?.firestoreId || id, 'patientId:', deletedMed?.patientId);
         batch.delete(medRef);
 
         // Delete reminder_times docs where patientId == pId AND medicineId == id
+        console.log('[dbService.deleteMedicine] Query: reminder_times where patientId ==', pId, 'AND medicineId ==', id);
         const rSnap = await getDocs(
           query(
             collection(firestoreDb, 'reminder_times'),
@@ -642,11 +480,14 @@ export const dbService = {
             where('medicineId', '==', id)
           )
         );
+        console.log('[dbService.deleteMedicine] Found', rSnap.docs.length, 'reminder_times to delete');
         rSnap.docs.forEach((dDoc) => {
+          console.log('[dbService.deleteMedicine] Batch delete: reminder_times/', dDoc.id, 'patientId:', dDoc.data().patientId);
           batch.delete(dDoc.ref);
         });
 
         // Delete dose_logs docs where patientId == pId AND medicineId == id
+        console.log('[dbService.deleteMedicine] Query: dose_logs where patientId ==', pId, 'AND medicineId ==', id);
         const dlSnap = await getDocs(
           query(
             collection(firestoreDb, 'dose_logs'),
@@ -654,17 +495,21 @@ export const dbService = {
             where('medicineId', '==', id)
           )
         );
+        console.log('[dbService.deleteMedicine] Found', dlSnap.docs.length, 'dose_logs to delete');
         dlSnap.docs.forEach((dDoc) => {
+          console.log('[dbService.deleteMedicine] Batch delete: dose_logs/', dDoc.id, 'patientId:', dDoc.data().patientId);
           batch.delete(dDoc.ref);
         });
 
         // Delete refill_summary/rs-{id}
         const rsRef = doc(firestoreDb, 'refill_summary', `rs-${id}`);
+        console.log('[dbService.deleteMedicine] Batch delete: refill_summary/rs-', id);
         batch.delete(rsRef);
 
         await batch.commit();
+        console.log('[dbService.deleteMedicine] Batch committed successfully');
       } catch (e) {
-        console.error('[DB] deleteMedicine batch error:', e);
+        console.error('[dbService.deleteMedicine] error:', e?.code, e?.message);
         throw e;
       }
     }
@@ -736,7 +581,7 @@ export const dbService = {
 
         if (!alreadyExists) {
           const cleanTime = String(tStr).replace(/[^a-zA-Z0-9]/g, '');
-          const logId = `dl-${todayStr}-${med.id}-${cleanTime}`;
+          const logId = `dl-${todayStr}-${med.id}-${cleanTime}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           const newLog = {
             id: logId,
             patientId,
@@ -877,13 +722,18 @@ export const dbService = {
   },
 
   // DOSE LOGS
-  getDoseLogs(patientId = 'usr-patient-1') {
-    return localCache.dose_logs.filter((dl) => dl.patientId === patientId);
+  getDoseLogs(patientId) {
+    if (!patientId) return [];
+    return localCache.dose_logs.filter((d) => d.patientId === patientId);
   },
   async addDoseLog(logData) {
+    if (!logData.patientId) {
+      console.warn('[DB] addDoseLog: patientId is required');
+      return null;
+    }
     const newLog = {
       id: `dl-${Date.now()}`,
-      patientId: logData.patientId || 'usr-patient-1',
+      patientId: logData.patientId,
       timestamp: Date.now(),
       ...logData,
     };
@@ -1100,6 +950,51 @@ export const dbService = {
     );
   },
 
+  async deletePrescription(prescriptionId) {
+    const firestoreDb = getFirestoreDb();
+    if (!firestoreDb) {
+      throw new Error('Firebase is not configured. Cannot delete the prescription.');
+    }
+    
+    try {
+      // Get the prescription first to check for image URL
+      const docRef = doc(firestoreDb, 'prescriptions', prescriptionId);
+      const docSnap = await getDoc(docRef);
+      
+      if (!docSnap.exists()) {
+        throw new Error('Prescription not found');
+      }
+      
+      const prescription = { id: docSnap.id, ...docSnap.data() };
+      
+      // Delete from Firestore
+      await deleteDoc(docRef);
+      
+      // Delete from Storage if it's a Storage URL (not base64)
+      if (prescription.imageUrl && !prescription.imageUrl.startsWith('data:')) {
+        try {
+          const { storage, ref, deleteObject } = await import('firebase/storage');
+          if (storage && ref && deleteObject) {
+            const imageRef = ref(storage, prescription.imageUrl);
+            await deleteObject(imageRef);
+          }
+        } catch (storageError) {
+          // Ignore storage deletion errors - the document is already deleted
+          console.warn('[dbService.deletePrescription] Storage deletion failed (non-critical):', storageError?.message);
+        }
+      }
+      
+      // Remove from local cache
+      localCache.prescriptions = localCache.prescriptions?.filter(p => p.id !== prescriptionId) || [];
+      persistLocalCache();
+      
+      return prescription;
+    } catch (error) {
+      console.error('[dbService.deletePrescription] error:', error?.code, error?.message);
+      throw error;
+    }
+  },
+
   // CARE_LINKS
   subscribeToCareLinks(userId, role = 'patient', callback, onError) {
     const firestoreDb = getFirestoreDb();
@@ -1142,11 +1037,34 @@ export const dbService = {
     }
     return () => {};
   },
-  getCareLinks(patientId = 'usr-patient-1') {
+  getCareLinks(patientId) {
+    if (!patientId) return [];
     return localCache.care_links.filter((c) => c.patientId === patientId);
   },
   getCareLinksForMember(memberId) {
     return localCache.care_links.filter((c) => c.memberId === memberId);
+  },
+  subscribeToCareLinksForMember(memberId, callback, onError) {
+    if (!memberId) {
+      console.warn('[dbService.subscribeToCareLinksForMember] memberId is undefined, skipping query');
+      if (onError) onError({ code: 'invalid-argument', message: 'memberId is required' });
+      return () => {};
+    }
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      const q = query(collection(firestoreDb, 'care_links'), where('memberId', '==', memberId));
+      return onSnapshot(q, (snapshot) => {
+        const links = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        localCache.care_links = localCache.care_links.filter((c) => c.memberId !== memberId).concat(links);
+        persistLocalCache();
+        callback(links);
+      }, (err) => {
+        console.error('[dbService.subscribeToCareLinksForMember] error:', err.code, err.message);
+        if (onError) onError(err);
+      });
+    }
+    callback(this.getCareLinksForMember(memberId));
+    return () => {};
   },
   async addCareLink({ patientId, memberId, memberName, role, permissions = {}, status = 'Active', email = null, addedBy = null }) {
     const id = `${patientId}_${memberId}`;
@@ -1165,11 +1083,20 @@ export const dbService = {
   async findUserByEmail(email) {
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      const q = query(collection(firestoreDb, 'users'), where('email', '==', email));
-      const snapshot = await getDocs(q);
-      if (!snapshot.empty) {
-        const doc = snapshot.docs[0];
-        return { id: doc.id, ...doc.data() };
+      try {
+        const q = query(
+          collection(firestoreDb, 'users'),
+          where('email', '==', email),
+          where('role', 'in', ['nurse', 'caregiver', 'doctor'])
+        );
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+          const doc = snapshot.docs[0];
+          return { id: doc.id, ...doc.data() };
+        }
+      } catch (error) {
+        console.error('[dbService.findUserByEmail] error:', error?.code, error?.message);
+        throw error;
       }
     }
     return localCache.users.find((u) => u.email === email) || null;
@@ -1205,13 +1132,18 @@ export const dbService = {
   },
 
   // ALERTS
-  getAlerts(patientId = 'usr-patient-1') {
+  getAlerts(patientId) {
+    if (!patientId) return [];
     return localCache.alerts.filter((a) => a.patientId === patientId);
   },
   addAlert(alertData) {
+    if (!alertData.patientId) {
+      console.warn('[DB] addAlert: patientId is required');
+      return null;
+    }
     const newAlert = {
       id: `alt-${Date.now()}`,
-      patientId: 'usr-patient-1',
+      patientId: alertData.patientId,
       handled: false,
       timestamp: Date.now(),
       ...alertData,
@@ -1271,14 +1203,19 @@ export const dbService = {
   },
 
   // REFILL REQUESTS
-  getRefillRequests(patientId = 'usr-patient-1') {
+  getRefillRequests(patientId) {
+    if (!patientId) return [];
     return localCache.refill_requests.filter((r) => r.patientId === patientId);
   },
-  createRefillRequest(medicineId) {
+  createRefillRequest(medicineId, patientId) {
+    if (!patientId) {
+      console.warn('[DB] createRefillRequest: patientId is required');
+      return null;
+    }
     const newReq = {
       id: `rr-${Date.now()}`,
       medicineId,
-      patientId: 'usr-patient-1',
+      patientId,
       status: 'requested',
       timestamp: Date.now(),
     };
@@ -1314,7 +1251,7 @@ export const dbService = {
 
     const updateData = {
       status: 'refilled',
-      refilledBy: pharmacist?.id || pharmacist?.pharmacyRegNo || 'unknown',
+      refilledBy: pharmacist?.id || 'unknown',
       refilledByName: pharmacist?.name || 'Unknown Pharmacist',
       pharmacyName: pharmacist?.pharmacyName || 'Unknown Pharmacy',
       refilledAt: serverTimestamp(),
@@ -1354,7 +1291,8 @@ export const dbService = {
   },
 
   // CARE NOTES
-  getCareNotes(patientId = 'usr-patient-1') {
+  getCareNotes(patientId) {
+    if (!patientId) return [];
     return localCache.care_notes.filter((cn) => cn.patientId === patientId);
   },
   
@@ -1388,7 +1326,8 @@ export const dbService = {
     callback(this.getNotifications(userId));
     return () => {};
   },
-  getPatientVisibleNotes(patientId = 'usr-patient-1') {
+  getPatientVisibleNotes(patientId) {
+    if (!patientId) return [];
     return localCache.care_notes.filter((cn) => 
       cn.patientId === patientId && 
       (cn.visibleToPatient === true || cn.visibleToPatient === undefined)
@@ -1436,18 +1375,21 @@ export const dbService = {
     return () => {};
   },
   async addCareNote(noteData) {
-    const noteText = noteData.text || noteData.note || '';
+    if (!noteData.patientId) {
+      console.warn('[DB] addCareNote: patientId is required');
+      return null;
+    }
     const newNote = {
       id: `cn-${Date.now()}`,
-      patientId: noteData.patientId || 'usr-patient-1',
-      authorId: noteData.authorId || 'unknown',
-      authorName: noteData.authorName || 'Nurse',
-      authorRole: noteData.authorRole || 'Nurse',
-      text: noteText,
-      note: noteText,
+      patientId: noteData.patientId,
+      authorId: noteData.authorId,
+      authorName: noteData.authorName,
+      authorRole: noteData.authorRole || 'nurse',
+      text: noteData.text || noteData.note,
       visibleToPatient: noteData.visibleToPatient !== undefined ? noteData.visibleToPatient : true,
       createdAt: Date.now(),
       editedAt: null,
+      ...noteData,
     };
 
     localCache.care_notes.push(newNote);
@@ -1579,16 +1521,17 @@ export const dbService = {
     
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
-      await setDoc(doc(firestoreDb, 'access_codes', codeHash), {
-        ...accessCode,
-        expiresAt: Timestamp.fromMillis(expiresAt),
-        createdAt: serverTimestamp(),
-      });
+      try {
+        await setDoc(doc(firestoreDb, 'access_codes', codeHash), {
+          ...accessCode,
+          createdAt: serverTimestamp(),
+        });
+      } catch (error) {
+        console.error('[dbService.generateAccessCode] error:', error?.code, error?.message);
+        throw error;
+      }
     }
-    localCache.access_codes = localCache.access_codes.filter((ac) => ac.id !== codeHash).concat(accessCode);
-    persistLocalCache();
-    
-    return { code, codeHash, expiresAt };
+    return code;
   },
   async verifyAccessCode(code, userRole) {
     // Normalize code
@@ -1644,6 +1587,32 @@ export const dbService = {
     const grantsToRevoke = localCache.grants.filter((g) => g.codeHash === codeHash);
     for (const grant of grantsToRevoke) {
       await this.revokeGrant(grant.id);
+    }
+  },
+  async removeConsent(codeHash) {
+    const accessCode = localCache.access_codes.find((ac) => ac.id === codeHash);
+    if (!accessCode) return null;
+    
+    // Backup for undo
+    const backup = { ...accessCode };
+    
+    await this.revokeAccessCode(codeHash);
+    return backup;
+  },
+  async restoreConsent(backupConsent) {
+    if (!backupConsent) return;
+    
+    localCache.access_codes = localCache.access_codes.map((ac) => 
+      ac.id === backupConsent.id ? { ...backupConsent, status: 'Active' } : ac
+    );
+    persistLocalCache();
+    
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      await updateDoc(doc(firestoreDb, 'access_codes', backupConsent.id), { 
+        status: 'Active',
+        expiresAt: Timestamp.fromMillis(backupConsent.expiresAt)
+      });
     }
   },
 
@@ -1713,7 +1682,8 @@ export const dbService = {
   },
 
   // REFILL SUMMARY
-  getRefillSummary(patientId = 'usr-patient-1') {
+  getRefillSummary(patientId) {
+    if (!patientId) return [];
     return localCache.refill_summary.filter((rs) => rs.patientId === patientId);
   },
   subscribeToRefillSummary(patientId, callback, onError) {

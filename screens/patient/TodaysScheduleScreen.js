@@ -26,7 +26,15 @@ export default function TodaysScheduleScreen({
 }) {
   const language = userPreferences.language || 'en';
   const t = useT();
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const userRole = currentUser?.role || 'patient';
   const { firestore } = getFirebaseServices();
 
@@ -442,7 +450,7 @@ export default function TodaysScheduleScreen({
 
                 return (
                   <View
-                    key={item.id}
+                    key={`${item.id}-${item.time}`}
                     style={[
                       styles.doseRowCard,
                       isTaken && styles.takenDoseRowCard,

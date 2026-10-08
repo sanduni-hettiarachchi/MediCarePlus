@@ -1,0 +1,15 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Prescriptions: authenticated users can write to their own prescriptions folder
+    match /prescriptions/{userId}/{allPaths=**} {
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Allow read for all authenticated users (for accessing shared images)
+    match /{allPaths=**} {
+      allow read: if request.auth != null;
+    }
+  }
+}

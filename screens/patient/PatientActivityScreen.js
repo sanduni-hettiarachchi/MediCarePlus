@@ -10,7 +10,15 @@ import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
 export default function PatientActivityScreen({ navigation, currentUser }) {
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const [doseLogs, setDoseLogs] = useState([]);
   const [activeFilter, setActiveFilter] = useState('All');
   const [loading, setLoading] = useState(true);

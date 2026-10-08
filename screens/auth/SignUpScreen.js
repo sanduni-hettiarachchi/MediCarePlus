@@ -18,55 +18,19 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState(routeRole || 'patient');
-  const [nurseId, setNurseId] = useState('N-2041');
-  const [slmcNumber, setSlmcNumber] = useState('12345');
-  const [pharmacyRegNo, setPharmacyRegNo] = useState('PH-778');
   const [errorMsg, setErrorMsg] = useState('');
 
   const accountRole = role;
 
-  // Filter available roles based on route param
-  const getAvailableRoles = () => {
-    if (routeRole === 'patient' || routeRole === 'caregiver') {
-      return [
-        { key: 'patient', label: 'Patient' },
-        { key: 'caregiver', label: 'Caregiver' },
-      ];
-    }
-    if (routeRole === 'doctor' || routeRole === 'pharmacist') {
-      return [
-        { key: 'doctor', label: 'Doctor' },
-        { key: 'pharmacist', label: 'Pharmacist' },
-      ];
-    }
-    // Show all roles if no specific route role (default behavior)
-    return [
-      { key: 'patient', label: 'Patient' },
-      { key: 'caregiver', label: 'Caregiver' },
-      { key: 'nurse', label: 'Nurse' },
-      { key: 'doctor', label: 'Doctor' },
-      { key: 'pharmacist', label: 'Pharmacist' },
-    ];
-  };
-
-  const availableRoles = getAvailableRoles();
+  // Only Patient and Caregiver roles available for self-signup
+  const availableRoles = [
+    { key: 'patient', label: 'Patient' },
+    { key: 'caregiver', label: 'Caregiver' },
+  ];
 
   const handleCreateAccount = async () => {
     if (!name.trim() || !email.trim() || !password.trim()) {
       setErrorMsg('Name, email, and password are required.');
-      return;
-    }
-
-    if (accountRole === 'nurse' && !nurseId.trim()) {
-      setErrorMsg('Nurse ID is required.');
-      return;
-    }
-    if (accountRole === 'doctor' && !slmcNumber.trim()) {
-      setErrorMsg('SLMC Registration Number is required.');
-      return;
-    }
-    if (accountRole === 'pharmacist' && !pharmacyRegNo.trim()) {
-      setErrorMsg('Pharmacy Registration Number is required.');
       return;
     }
 
@@ -77,21 +41,12 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
         phone: phone.trim(),
         password: password.trim(),
         role: accountRole,
-        nurseId: accountRole === 'nurse' ? nurseId.trim() : undefined,
-        slmcNumber: accountRole === 'doctor' ? slmcNumber.trim() : undefined,
-        pharmacyRegNo: accountRole === 'pharmacist' ? pharmacyRegNo.trim() : undefined,
       });
 
       if (onSignUpSuccess) {
         onSignUpSuccess(newUser);
       } else {
-        if (accountRole === 'nurse') {
-          navigation?.navigate('NurseMyPatients', { nurse: newUser });
-        } else if (accountRole === 'doctor') {
-          navigation?.navigate('ScanQRCode', { doctor: newUser });
-        } else if (accountRole === 'pharmacist') {
-          navigation?.navigate('PharmacistPatientMedicines', { pharmacist: newUser });
-        } else if (accountRole === 'caregiver') {
+        if (accountRole === 'caregiver') {
           navigation?.navigate('CaregiverProfiles');
         } else {
           navigation?.navigate('TodaysSchedule');
@@ -104,9 +59,6 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
 
   const getHeaderTitle = () => {
     switch (accountRole) {
-      case 'nurse': return 'Nurse sign up';
-      case 'doctor': return 'Doctor sign up';
-      case 'pharmacist': return 'Pharmacist sign up';
       case 'caregiver': return 'Caregiver sign up';
       default: return 'Create account';
     }
@@ -167,42 +119,6 @@ export default function SignUpScreen({ navigation, route, onSignUpSuccess }) {
             secureTextEntry
           />
         </View>
-
-        {accountRole === 'nurse' && (
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>NURSE ID</Text>
-            <TextInput
-              style={styles.input}
-              value={nurseId}
-              onChangeText={setNurseId}
-              placeholder="e.g. N-2041"
-            />
-          </View>
-        )}
-
-        {accountRole === 'doctor' && (
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>SLMC REGISTRATION NUMBER</Text>
-            <TextInput
-              style={styles.input}
-              value={slmcNumber}
-              onChangeText={setSlmcNumber}
-              placeholder="e.g. 12345"
-            />
-          </View>
-        )}
-
-        {accountRole === 'pharmacist' && (
-          <View style={styles.fieldGroup}>
-            <Text style={styles.label}>PHARMACY REGISTRATION NUMBER</Text>
-            <TextInput
-              style={styles.input}
-              value={pharmacyRegNo}
-              onChangeText={setPharmacyRegNo}
-              placeholder="e.g. PH-778"
-            />
-          </View>
-        )}
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>I AM A</Text>

@@ -1,16 +1,14 @@
 // Voice reminders and daily repeating alarms using expo-speech and expo-notifications
-import * as Notifications from 'expo-notifications';
 import * as Speech from 'expo-speech';
+import * as notificationHelper from './notificationHelper';
 
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: false,
-    }),
-  });
-} catch (e) {}
+notificationHelper.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
 
 // Helper to parse time string like "8:00 AM" or "1:00 PM" or "20:00" into 24-hour hour and minute
 export function parseTimeString(timeStr) {
@@ -69,7 +67,7 @@ export const reminderService = {
       // Cancel existing if rescheduling
       await this.cancelNotification(identifier);
 
-      const scheduledId = await Notifications.scheduleNotificationAsync({
+      const scheduledId = await notificationHelper.scheduleNotificationAsync({
         identifier,
         content: {
           title: '💊 Daily Medication Reminder',
@@ -95,7 +93,7 @@ export const reminderService = {
 
   async scheduleSnoozeNotification(medicineId, medicineName, delayMinutes = 10, language = 'en') {
     try {
-      return await Notifications.scheduleNotificationAsync({
+      return await notificationHelper.scheduleNotificationAsync({
         content: {
           title: language === 'si' ? 'ඖෂධ මතක් කිරීම' : 'Medication reminder',
           body: language === 'si'
@@ -115,7 +113,7 @@ export const reminderService = {
   // Cancel notification for a deleted or modified medicine
   async cancelNotification(notificationId) {
     try {
-      await Notifications.cancelScheduledNotificationAsync(notificationId);
+      await notificationHelper.cancelScheduledNotificationAsync(notificationId);
       console.log(`[NOTIFICATION_CANCELLED] ID: ${notificationId}`);
     } catch (err) {
       console.warn('[NOTIFICATIONS_WARN] Cancel error:', err);
@@ -125,12 +123,12 @@ export const reminderService = {
   // Reschedule all daily reminder times for an edited medicine
   async rescheduleMedicineReminders(medicineId, medicineName, newTimesList = []) {
     try {
-      const allScheduled = await Notifications.getAllScheduledNotificationsAsync();
+      const allScheduled = await notificationHelper.getAllScheduledNotificationsAsync();
       const prefix = `notif-${medicineId}-`;
 
       for (const notif of allScheduled) {
         if (notif.identifier && notif.identifier.startsWith(prefix)) {
-          await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+          await notificationHelper.cancelScheduledNotificationAsync(notif.identifier);
         }
       }
 

@@ -6,16 +6,17 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { collection, query, where, getDocs, writeBatch, doc, serverTimestamp, updateDoc } from 'firebase/firestore';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
 export default function AddCareNoteScreen({ navigation, route, currentUser }) {
-  const patient = route?.params?.patient || { name: 'Mrs. Perera', id: 'usr-patient-1' };
-  const nurse = route?.params?.nurse || { name: 'Nurse Dilani', id: currentUser?.id };
+  const patient = route?.params?.patient || { name: 'Patient' };
+  const patientId = route?.params?.patientId || patient.id;
+  const nurse = route?.params?.nurse || { name: currentUser?.name || 'Nurse' };
   const existingNote = route?.params?.existingNote;
-  const patientId = patient.id || 'usr-patient-1';
 
   const [noteText, setNoteText] = useState(existingNote ? existingNote.text || existingNote.note : '');
   const [dateTimeStr, setDateTimeStr] = useState('');
@@ -40,24 +41,95 @@ export default function AddCareNoteScreen({ navigation, route, currentUser }) {
     setErrorMessage('');
     setSavedSuccess(false);
 
-    const authorId = currentUser?.id || nurse.id;
-    const authorName = currentUser?.name || nurse.name || 'Nurse Dilani';
+    const authorId = currentUser?.id;
+    const authorName = currentUser?.name || nurse.name;
 
-    const noteData = {
-      patientId,
-      authorId,
-      authorName,
-      authorRole: 'nurse',
-      text: noteText.trim(),
-      note: noteText.trim(),
-      visibleToPatient: shareWithPatient,
-    };
+    if (!authorId) {
+      setErrorMessage('No authenticated user');
+      setSaving(false);
+      return;
+    }
 
     try {
+      const firestoreDb = dbService.getFirestoreDb?.();
+      if (!firestoreDb) {
+        throw new Error('Firestore not available');
+      }
+
       if (existingNote) {
-        await dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
+        // Edit mode: update text, visibleToPatient, editedAt
+        const noteRef = doc(firestoreDb, 'care_notes', existingNote.id);
+        await updateDoc(noteRef, {
+          text: noteText.trim(),
+          visibleToPatient: shareWithPatient,
+          editedAt: serverTimestamp()
+        });
+        console.log('[AddCareNote] Updated note:', existingNote.id);
       } else {
-        await dbService.addCareNote(noteData);
+        // Create mode: save note and fan out notifications
+        const batch = writeBatch(firestoreDb);
+        
+        // Create care note
+        const noteRef = doc(collection(firestoreDb, 'care_notes'));
+        const noteData = {
+          patientId,
+          authorId,
+          authorName,
+          authorRole: 'nurse',
+          type: 'nurse_note',
+          text: noteText.trim(),
+          visibleToPatient: shareWithPatient,
+          createdAt: serverTimestamp(),
+          editedAt: null
+        };
+        batch.set(noteRef, noteData);
+        
+        // Fan out notifications if visible to patient
+        if (shareWithPatient) {
+          // Query active care_links for this patient
+          const careLinksQuery = query(
+            collection(firestoreDb, 'care_links'),
+            where('patientId', '==', patientId),
+            where('status', '==', 'Active')
+          );
+          const careLinksSnapshot = await getDocs(careLinksQuery);
+          
+          // Add notification for patient
+          const patientNotifRef = doc(collection(firestoreDb, 'notifications'));
+          batch.set(patientNotifRef, {
+            userId: patientId,
+            patientId,
+            type: 'care_note',
+            title: 'New care note',
+            body: `${authorName} added a care note`,
+            read: false,
+            createdBy: authorId,
+            createdAt: serverTimestamp(),
+            relatedId: noteRef.id
+          });
+          
+          // Add notifications for caregivers with viewCareNotes permission
+          careLinksSnapshot.forEach((docSnapshot) => {
+            const link = docSnapshot.data();
+            if (link.role === 'caregiver' && link.permissions?.viewCareNotes && link.memberId !== authorId) {
+              const caregiverNotifRef = doc(collection(firestoreDb, 'notifications'));
+              batch.set(caregiverNotifRef, {
+                userId: link.memberId,
+                patientId,
+                type: 'care_note',
+                title: 'New care note',
+                body: `${authorName} added a care note`,
+                read: false,
+                createdBy: authorId,
+                createdAt: serverTimestamp(),
+                relatedId: noteRef.id
+              });
+            }
+          });
+        }
+        
+        await batch.commit();
+        console.log('[AddCareNote] Saved note and notifications:', noteRef.id);
       }
 
       setSavedSuccess(true);
@@ -68,7 +140,7 @@ export default function AddCareNoteScreen({ navigation, route, currentUser }) {
         navigation?.goBack();
       }, 1200);
     } catch (err) {
-      console.error('Save care note error:', err);
+      console.error('[AddCareNote] Save error:', err.code, err.message);
       setErrorMessage(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
     } finally {
       setSaving(false);

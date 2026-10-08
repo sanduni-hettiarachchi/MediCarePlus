@@ -15,7 +15,7 @@ import dbService from '../../services/db';
 export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
   const [email, setEmail] = useState('dilani@careteam.lk');
   const [password, setPassword] = useState('password123');
-  const [nurseId, setNurseId] = useState('N-2041');
+  const [nurseId, setNurseId] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleSignIn = async () => {
@@ -28,14 +28,16 @@ export default function NurseSignInScreen({ navigation, onNurseSignIn }) {
 
     try {
       const activeNurse = await dbService.signInProfessionalFirebase(email.trim(), password.trim());
+      // Verify role and nurseId from user doc
       if (activeNurse.role !== 'nurse' || String(activeNurse.nurseId ?? '') !== nurseId.trim()) {
         setErrorMsg('Invalid nurse credentials, role or Nurse ID.');
         return;
       }
+      // Pass the user object with correct id from buildCurrentUser
       if (onNurseSignIn) {
         onNurseSignIn(activeNurse);
       } else {
-        navigation?.navigate('NurseMyPatients', { nurse: activeNurse });
+        navigation?.navigate('NurseMyPatients', { currentUser: activeNurse });
       }
     } catch (error) {
       setErrorMsg('Invalid nurse credentials, role or Nurse ID.');

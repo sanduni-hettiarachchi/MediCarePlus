@@ -38,21 +38,21 @@ import YourMedicinesScreen from './screens/patient/YourMedicinesScreen';
 import AdherenceCalendarScreen from './screens/caregiver/AdherenceCalendarScreen';
 import CallOutcomeLogScreen from './screens/caregiver/CallOutcomeLogScreen';
 import CaregiverActivityScreen from './screens/caregiver/CaregiverActivityScreen';
+import CaregiverCareNotesScreen from './screens/caregiver/CaregiverCareNotesScreen';
 import CaregiverInsightsScreen from './screens/caregiver/CaregiverInsightsScreen';
 import CaregiverPendingRequestsScreen from './screens/caregiver/CaregiverPendingRequestsScreen';
 import CaregiverProfilesScreen from './screens/caregiver/CaregiverProfilesScreen';
 import ManageLinkedCaregiversScreen from './screens/caregiver/ManageLinkedCaregiversScreen';
 import ManagePatientScheduleScreen from './screens/caregiver/ManagePatientScheduleScreen';
 import RefillNotificationScreen from './screens/caregiver/RefillNotificationScreen';
-import AccessGrantedScreen from './screens/doctor/AccessGrantedScreen';
 import DoctorProfileScreen from './screens/doctor/DoctorProfileScreen';
 import DoctorSignInScreen from './screens/doctor/DoctorSignInScreen';
+import DoctorPatientsScreen from './screens/doctor/DoctorPatientsScreen';
 import HealthReportScreen from './screens/doctor/HealthReportScreen';
 import HomeVisitSummaryScreen from './screens/doctor/HomeVisitSummaryScreen';
 import PatientVisitsScreen from './screens/doctor/PatientVisitsScreen';
 import PrescriptionsRefillsScreen from './screens/doctor/PrescriptionsRefillsScreen';
 import RefillStatusScreen from './screens/doctor/RefillStatusScreen';
-import ScanQRCodeScreen from './screens/doctor/ScanQRCodeScreen';
 import EditCareNoteScreen from './screens/nurse/EditCareNoteScreen';
 import NurseMyPatientsScreen from './screens/nurse/NurseMyPatientsScreen';
 import NursePatientDetailScreen from './screens/nurse/NursePatientDetailScreen';
@@ -60,6 +60,7 @@ import NursePendingRequestsScreen from './screens/nurse/NursePendingRequestsScre
 import NurseProfileScreen from './screens/nurse/NurseProfileScreen';
 import NurseSignInScreen from './screens/nurse/NurseSignInScreen';
 import PharmacistPatientMedicinesScreen from './screens/pharmacist/PharmacistPatientMedicinesScreen';
+import PharmacistPatientsScreen from './screens/pharmacist/PharmacistPatientsScreen';
 import PharmacistProfileScreen from './screens/pharmacist/PharmacistProfileScreen';
 import RefillSummaryScreen from './screens/pharmacist/RefillSummaryScreen';
 
@@ -135,21 +136,40 @@ export default function App() {
         if (user) {
           // User is signed in, fetch their role from Firestore
           try {
-            const userDoc = await dbService.getUserById(user.uid);
-            if (userDoc) {
-              setCurrentUser(userDoc);
-              setUserRole(userDoc.role);
-              // If not on Splash screen, navigate to role's home screen
-              setCurrentScreen((prevScreen) => {
-                if (prevScreen === 'Splash') return 'Splash';
-                if (userDoc.role === 'caregiver') return 'CaregiverProfiles';
-                if (userDoc.role === 'doctor') return 'HomeVisitSummary';
-                if (userDoc.role === 'nurse') return 'NurseMyPatients';
-                if (userDoc.role === 'pharmacist') return 'PharmacistPatientMedicines';
-                return 'TodaysSchedule';
-              });
+            const firestoreDb = dbService.getFirestoreDb?.();
+            if (firestoreDb) {
+              const { doc, getDoc } = require('firebase/firestore');
+              const profileSnapshot = await getDoc(doc(firestoreDb, 'users', user.uid));
+              if (profileSnapshot.exists()) {
+                const currentUser = dbService.buildCurrentUser?.(user, profileSnapshot.data()) || {
+                  ...profileSnapshot.data(),
+                  id: user.uid,
+                  uid: user.uid,
+                };
+                setCurrentUser(currentUser);
+                setUserRole(currentUser.role);
+                // Navigate to role's home screen
+                setCurrentScreen((prevScreen) => {
+                  if (prevScreen === 'Splash') return 'Splash';
+                  if (currentUser.role === 'caregiver') return 'CaregiverProfiles';
+                  if (currentUser.role === 'doctor') return 'DoctorPatients';
+                  if (currentUser.role === 'nurse') return 'NurseMyPatients';
+                  if (currentUser.role === 'pharmacist') return 'PharmacistPatients';
+                  return 'TodaysSchedule';
+                });
+              } else {
+                setCurrentUser(null);
+              }
             } else {
-              setCurrentUser(null);
+              // Fallback to local cache if Firestore not available
+              const userDoc = dbService.getUserById(user.uid);
+              if (userDoc) {
+                const currentUser = { ...userDoc, id: user.uid, uid: user.uid };
+                setCurrentUser(currentUser);
+                setUserRole(currentUser.role);
+              } else {
+                setCurrentUser(null);
+              }
             }
           } catch (e) {
             console.warn('Error fetching user role:', e);
@@ -252,23 +272,23 @@ export default function App() {
       case 'CaregiverProfiles': return <CaregiverProfilesScreen navigation={navigation} onNavigateTab={handleNavigateTab} onLogout={handleLogout} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} currentUser={currentUser} />;
       case 'CaregiverPendingRequests': return <CaregiverPendingRequestsScreen navigation={navigation} currentUser={currentUser} onNavigateTab={handleNavigateTab} />;
       case 'CaregiverActivity': return <CaregiverActivityScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} currentUser={currentUser} />;
+      case 'CaregiverCareNotes': return <CaregiverCareNotesScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'CallOutcomeLog': return <CallOutcomeLogScreen navigation={navigation} route={route} />;
       case 'ManagePatientSchedule': return <ManagePatientScheduleScreen navigation={navigation} onNavigateTab={handleNavigateTab} hasAlertBadge={hasUnhandledAlert} />;
       case 'ManageLinkedCaregivers': return <ManageLinkedCaregiversScreen navigation={navigation} currentUser={currentUser} />;
       case 'RefillNotification': return <RefillNotificationScreen navigation={navigation} route={route} onNavigateTab={handleNavigateTab} hasAlertBadge={hasUnhandledAlert} />;
       case 'CaregiverInsights': return <CaregiverInsightsScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} />;
       case 'AdherenceCalendar': return <AdherenceCalendarScreen navigation={navigation} />;
-      case 'DoctorSignIn': return <DoctorSignInScreen navigation={navigation} onDoctorSignIn={(professional) => { setUserRole(professional.role); navigation.navigate('ScanQRCode', { doctor: professional }); }} />;
-      case 'ScanQRCode': return <ScanQRCodeScreen navigation={navigation} route={route} />;
-      case 'AccessGranted': return <AccessGrantedScreen navigation={navigation} route={route} />;
+      case 'DoctorSignIn': return <DoctorSignInScreen navigation={navigation} onDoctorSignIn={(professional) => { setUserRole(professional.role); navigation.navigate('DoctorPatients', { doctor: professional }); }} />;
+      case 'DoctorPatients': return <DoctorPatientsScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'HomeVisitSummary': return <HomeVisitSummaryScreen navigation={navigation} route={route} />;
       case 'HealthReport': return <HealthReportScreen navigation={navigation} route={route} />;
       case 'PatientVisits': return <PatientVisitsScreen navigation={navigation} route={route} />;
       case 'PrescriptionsRefills': return <PrescriptionsRefillsScreen navigation={navigation} route={route} />;
       case 'RefillStatus': return <RefillStatusScreen navigation={navigation} route={route} />;
       case 'DoctorProfile': return <DoctorProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
-      case 'NurseSignIn': return <NurseSignInScreen navigation={navigation} onNurseSignIn={(nurse) => { setUserRole('nurse'); navigation.navigate('NurseMyPatients', { nurse }); }} />;
-      case 'NurseMyPatients': return <NurseMyPatientsScreen navigation={navigation} route={route} />;
+      case 'NurseSignIn': return <NurseSignInScreen navigation={navigation} onNurseSignIn={(nurse) => { setUserRole('nurse'); navigation.navigate('NurseMyPatients', { currentUser: nurse }); }} />;
+      case 'NurseMyPatients': return <NurseMyPatientsScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'NursePatientDetail': return <NursePatientDetailScreen navigation={navigation} route={route} />;
       case 'AddCareNote': return <AddCareNoteScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'EditCareNote': return <EditCareNoteScreen navigation={navigation} route={route} currentUser={currentUser} />;
@@ -276,6 +296,7 @@ export default function App() {
       case 'InviteNurse': return <InviteNurseScreen navigation={navigation} />;
       case 'NurseProfile': return <NurseProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
       case 'NursePendingRequests': return <NursePendingRequestsScreen navigation={navigation} currentUser={currentUser} />;
+      case 'PharmacistPatients': return <PharmacistPatientsScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'PharmacistPatientMedicines': return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} />;
       case 'PharmacistProfile': return <PharmacistProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
       case 'RefillSummary': return <RefillSummaryScreen navigation={navigation} route={route} />;
@@ -283,7 +304,7 @@ export default function App() {
     }
   };
 
-  const isDarkContainer = userPreferences.highContrast || currentScreen === 'ScanQRCode';
+  const isDarkContainer = userPreferences.highContrast;
   return (
     <ErrorBoundary>
       <View style={styles.mobileStage}>

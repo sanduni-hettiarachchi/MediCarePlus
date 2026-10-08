@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Image,
   ScrollView,
@@ -24,7 +24,7 @@ const todayString = () => {
 };
 
 async function prepareImage(uri, width, quality = 0.5) {
-  const actions = width > 800 ? [{ resize: { width: 800 } }] : [];
+  const actions = width > 1024 ? [{ resize: { width: 1024 } }] : [];
   return ImageManipulator.manipulateAsync(uri, actions, {
     compress: quality,
     format: ImageManipulator.SaveFormat.JPEG,
@@ -33,27 +33,42 @@ async function prepareImage(uri, width, quality = 0.5) {
 }
 
 async function savePrescriptionImage(image, patientId) {
-  const prepared = await prepareImage(image.uri, image.width);
+  // Compress image first (max width 1024, quality 0.6)
+  const prepared = await prepareImage(image.uri, image.width, 0.6);
+  
+  // Check if base64 is still too large for Firestore (1MB limit)
+  const base64Size = prepared.base64 ? prepared.base64.length : 0;
+  if (base64Size > 700_000) {
+    console.warn('[savePrescriptionImage] Image too large even after compression:', base64Size);
+    return null; // Signal to save without image
+  }
+
   try {
     const { storage } = getFirebaseServices();
     const response = await fetch(prepared.uri);
     const blob = await response.blob();
+    
+    // Add 10 second timeout to upload
     const imageRef = ref(storage, `prescriptions/${patientId}/${Date.now()}.jpg`);
-    await uploadBytes(imageRef, blob, { contentType: 'image/jpeg' });
+    const uploadPromise = uploadBytes(imageRef, blob, { contentType: 'image/jpeg' });
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Upload timeout')), 10000)
+    );
+    
+    await Promise.race([uploadPromise, timeoutPromise]);
     return await getDownloadURL(imageRef);
   } catch (error) {
-    let fallback = prepared;
-    if (!fallback.base64 || fallback.base64.length > 900_000) {
-      fallback = await prepareImage(image.uri, image.width, 0.25);
+    console.warn('[savePrescriptionImage] Storage upload failed, using base64 fallback:', error);
+    // Use base64 fallback if under 700KB
+    if (prepared.base64 && prepared.base64.length <= 700_000) {
+      return `data:image/jpeg;base64,${prepared.base64}`;
     }
-    if (!fallback.base64 || fallback.base64.length > 900_000) {
-      throw new Error('Image is too large to store. Choose a smaller image.');
-    }
-    return `data:image/jpeg;base64,${fallback.base64}`;
+    console.warn('[savePrescriptionImage] Image too large for base64 fallback');
+    return null; // Signal to save without image
   }
 }
 
-export default function AddPrescriptionScreen({ navigation, currentUser }) {
+export default function AddPrescriptionScreen({ navigation, route, currentUser }) {
   const [doctorName, setDoctorName] = useState('');
   const [date, setDate] = useState(todayString());
   const [medicines, setMedicines] = useState(['']);
@@ -61,6 +76,18 @@ export default function AddPrescriptionScreen({ navigation, currentUser }) {
   const [image, setImage] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [saving, setSaving] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+
+  // Get patientId from route params first, then from currentUser
+  const patientId = route?.params?.patientId || 
+                    (currentUser?.role === 'patient' ? currentUser.id : currentUser?.patientId);
+
+  useEffect(() => {
+    // Wait for auth to finish loading
+    if (currentUser !== undefined && currentUser !== null) {
+      setIsLoadingAuth(false);
+    }
+  }, [currentUser]);
 
   const chooseImage = async (source) => {
     const picker = source === 'camera'
@@ -84,7 +111,9 @@ export default function AddPrescriptionScreen({ navigation, currentUser }) {
       setErrorMessage('Add at least one medicine or attach an image.');
       return;
     }
-    const patientId = currentUser?.role === 'patient' ? currentUser.id : currentUser?.patientId;
+    
+    console.log('[AddPrescriptionScreen] user?.uid:', currentUser?.id, 'patientId:', patientId);
+    
     if (!patientId || !currentUser?.id) {
       setErrorMessage('Could not identify the patient or signed-in user.');
       return;
@@ -94,9 +123,15 @@ export default function AddPrescriptionScreen({ navigation, currentUser }) {
     setErrorMessage('');
     try {
       const imageUrl = image ? await savePrescriptionImage(image, patientId) : null;
+      
+      // If image upload failed and returned null, save without image
+      if (image && !imageUrl) {
+        console.warn('[AddPrescriptionScreen] Image could not be saved, saving prescription without image');
+        setErrorMessage('Image could not be saved. Prescription saved without image.');
+      }
+
       await dbService.createPrescription({
         patientId,
-        // DEVIATION (not in PDF): creator UID and role are stored for auditability.
         addedBy: currentUser.id,
         addedByRole: currentUser.role,
         doctorName: doctorName.trim(),
@@ -108,15 +143,20 @@ export default function AddPrescriptionScreen({ navigation, currentUser }) {
       });
       navigation?.navigate('MyPrescriptions', { prescriptionAdded: true });
     } catch (error) {
-      setErrorMessage(error.message || 'Could not save the prescription.');
+      console.error('[AddPrescriptionScreen] save error:', error?.code, error?.message);
+      setErrorMessage(`Failed to save prescription [${error?.code || 'unknown'}]: ${error?.message || 'Please try again.'}`);
     } finally {
       setSaving(false);
     }
   };
 
+  const handleBack = () => {
+    navigation?.goBack();
+  };
+
   return (
     <View style={styles.container}>
-      <Header title="Add prescription" onBack={() => navigation?.navigate('MyPrescriptions')} />
+      <Header title="Add prescription" onBack={handleBack} />
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
 
@@ -132,7 +172,6 @@ export default function AddPrescriptionScreen({ navigation, currentUser }) {
 
         <View style={styles.fieldGroup}>
           <Text style={styles.label}>MEDICINES</Text>
-          {/* DEVIATION (not in PDF): medicines are entered as editable text-box lines. */}
           {medicines.map((medicine, index) => (
             <View key={index} style={styles.medicineRow}>
               <TextInput
@@ -186,7 +225,12 @@ export default function AddPrescriptionScreen({ navigation, currentUser }) {
           ) : null}
         </View>
 
-        <Button title={saving ? 'Saving...' : 'Save prescription'} onPress={handleSave} disabled={saving} style={styles.saveButton} />
+        <Button 
+          title={saving ? 'Saving...' : 'Save prescription'} 
+          onPress={handleSave} 
+          disabled={saving || isLoadingAuth} 
+          style={styles.saveButton} 
+        />
       </ScrollView>
     </View>
   );

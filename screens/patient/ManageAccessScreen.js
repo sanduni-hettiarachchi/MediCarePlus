@@ -17,7 +17,15 @@ import { useT } from '../../i18n/LanguageContext';
 
 export default function ManageAccessScreen({ navigation, currentUser }) {
   const t = useT();
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const [accessLinks, setAccessLinks] = useState([]);
   const [targetConsent, setTargetConsent] = useState(null);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -105,6 +113,11 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
                     <Text style={styles.pendingTagText}>Pending</Text>
                   </View>
                 )}
+                {item.status === 'Declined' && (
+                  <View style={styles.declinedTag}>
+                    <Text style={styles.declinedTagText}>Declined</Text>
+                  </View>
+                )}
               </View>
 
               <View style={styles.actionButtons}>
@@ -143,14 +156,35 @@ export default function ManageAccessScreen({ navigation, currentUser }) {
                 <Text style={styles.roleText}>{item.role === 'nurse' ? 'Nurse' : item.role}</Text>
                 {item.email && <Text style={styles.emailText}>{item.email}</Text>}
                 {item.addedBy && <Text style={styles.addedByText}>Added by {item.addedBy}</Text>}
+                {item.status === 'Pending' && (
+                  <View style={styles.pendingTag}>
+                    <Text style={styles.pendingTagText}>Pending</Text>
+                  </View>
+                )}
+                {item.status === 'Declined' && (
+                  <View style={styles.declinedTag}>
+                    <Text style={styles.declinedTagText}>Declined</Text>
+                  </View>
+                )}
               </View>
 
-              <TouchableOpacity
-                style={styles.removeBtn}
-                onPress={() => handleOpenRemoveSheet(item)}
-              >
-                <Text style={styles.removeBtnText}>Remove</Text>
-              </TouchableOpacity>
+              <View style={styles.actionButtons}>
+                {item.status === 'Pending' ? (
+                  <TouchableOpacity
+                    style={styles.cancelBtn}
+                    onPress={() => handleOpenRemoveSheet(item)}
+                  >
+                    <Text style={styles.cancelBtnText}>Cancel invite</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.removeBtn}
+                    onPress={() => handleOpenRemoveSheet(item)}
+                  >
+                    <Text style={styles.removeBtnText}>Remove</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           ))}
           {accessLinks.filter(c => c.role === 'nurse').length === 0 && (
@@ -417,9 +451,29 @@ const styles = StyleSheet.create({
   },
   pendingTag: {
     backgroundColor: '#FEF3C7',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+    alignSelf: 'flex-start',
   },
   pendingTagText: {
+    fontSize: 10,
+    fontWeight: '700',
     color: '#92400E',
+  },
+  declinedTag: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginTop: 4,
+    alignSelf: 'flex-start',
+  },
+  declinedTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#991B1B',
   },
   roleText: {
     fontSize: 12,
@@ -448,17 +502,19 @@ const styles = StyleSheet.create({
     paddingVertical: 20,
     textAlign: 'center',
   },
-  pendingTag: {
-    backgroundColor: '#FEF3C7',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-    marginTop: 4,
-    alignSelf: 'flex-start',
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
   },
-  pendingTagText: {
-    fontSize: 10,
-    fontWeight: '700',
+  cancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    backgroundColor: '#FEF3C7',
+  },
+  cancelBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
     color: '#92400E',
   },
   fullScreenOverlay: {

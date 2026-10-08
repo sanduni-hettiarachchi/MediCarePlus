@@ -23,7 +23,15 @@ export default function YourMedicinesScreen({
   onRetryOffline,
 }) {
   const t = useT();
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const [medicines, setMedicines] = useState([]);
   const [lowStockMed, setLowStockMed] = useState(null);
   const [refillRequests, setRefillRequests] = useState([]);

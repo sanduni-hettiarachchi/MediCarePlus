@@ -19,7 +19,15 @@ export default function PharmacistPatientMedicinesScreen({ navigation, route }) 
     name: 'Mr. Jayasuriya',
     pharmacyRegNo: 'PH-778',
   };
-  const patientId = route?.params?.patientId || 'usr-patient-1';
+  const patientId = route?.params?.patientId;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
 
   const [activeFilter, setActiveFilter] = useState('All medicines'); // 'All medicines' or 'Needs refill'
   const [medicines, setMedicines] = useState([]);

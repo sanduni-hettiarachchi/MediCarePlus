@@ -21,7 +21,7 @@ export default function ManageLinkedCaregiversScreen({ navigation, currentUser }
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [undoBackup, setUndoBackup] = useState(null);
   const [snackbarMsg, setSnackbarMsg] = useState('');
-  const [patientId, setPatientId] = useState('usr-patient-1');
+  const [patientId, setPatientId] = useState(null);
 
   useEffect(() => {
     const links = dbService.getCareLinksForMember(currentUser?.id);

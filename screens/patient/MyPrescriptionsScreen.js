@@ -3,6 +3,7 @@ import {
   Alert,
   Image,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -22,7 +23,11 @@ export default function MyPrescriptionsScreen({ navigation, route, currentUser }
   const [selectedImageUrl, setSelectedImageUrl] = useState(null);
   const [toastVisible, setToastVisible] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
-  const patientId = currentUser?.role === 'patient' ? currentUser.id : currentUser?.patientId;
+  const [deletingId, setDeletingId] = useState(null);
+  
+  // Get patientId from route params (for caregivers) or from currentUser (for patients)
+  const routePatientId = route?.params?.patientId;
+  const patientId = routePatientId || (currentUser?.role === 'patient' ? currentUser.id : currentUser?.patientId);
 
   useEffect(() => {
     if (!route?.params?.prescriptionAdded) return undefined;
@@ -67,6 +72,36 @@ export default function MyPrescriptionsScreen({ navigation, route, currentUser }
     }
   };
 
+  const handleDelete = async (prescription) => {
+    const confirmDelete = () => {
+      setDeletingId(prescription.id);
+      dbService.deletePrescription(prescription.id)
+        .then(() => {
+          setDeletingId(null);
+          // The subscription will automatically update the list
+        })
+        .catch((error) => {
+          setDeletingId(null);
+          Alert.alert('Delete failed', error.message || 'Could not delete prescription. Please try again.');
+        });
+    };
+
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete prescription?\n\nAre you sure you want to delete this prescription? This cannot be undone.')) {
+        confirmDelete();
+      }
+    } else {
+      Alert.alert(
+        'Delete prescription?',
+        'Are you sure you want to delete this prescription? This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Yes, delete', style: 'destructive', onPress: confirmDelete },
+        ]
+      );
+    }
+  };
+
   return (
     <View style={styles.container}>
       <Header title="My Prescriptions" subtitle="Prescription history" onBack={() => navigation?.goBack()} />
@@ -94,6 +129,7 @@ export default function MyPrescriptionsScreen({ navigation, route, currentUser }
             }}
             onViewImage={() => prescription.imageUrl && setSelectedImageUrl(prescription.imageUrl)}
             onDownload={() => handleShare(prescription.imageUrl)}
+            onDelete={deletingId === prescription.id ? null : handleDelete}
           />
         ))}
         <Button title="+ Add New Prescription" variant="outline" onPress={() => navigation?.navigate('AddPrescription')} style={styles.addBtn} />

@@ -12,8 +12,16 @@ import PatientText from '../../components/PatientText';
 const Text = PatientText;
 
 export default function PatientHistoryScreen({ navigation, route }) {
-  const patient = route?.params?.patient || { name: 'Mrs. Perera', id: 'usr-patient-1' };
-  const patientId = patient.id || 'usr-patient-1';
+  const patient = route?.params?.patient;
+  const patientId = patient?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const [selectedPeriod, setSelectedPeriod] = useState('7days');
   const [doseLogs, setDoseLogs] = useState([]);
   const [groupedLogs, setGroupedLogs] = useState({});

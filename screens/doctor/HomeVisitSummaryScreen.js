@@ -17,35 +17,85 @@ const Text = PatientText;
 
 export default function HomeVisitSummaryScreen({ navigation, route }) {
   const doctor = route?.params?.doctor || { name: 'Dr. K. Silva', slmcNumber: '12345' };
-  const patientId = route?.params?.patientId || 'usr-patient-1';
-  const [activeTab, setActiveTab] = useState('Home visit');
+  const patientId = route?.params?.patientId;
 
-  const [caregiverNotes, setCaregiverNotes] = useState([]);
-  const [summary, setSummary] = useState({ adherence: 0, mostMissedMedicine: '—', mostMissedTimeOfDay: '—' });
-  const [showNoteModal, setShowNoteModal] = useState(false);
-  const [counsellingText, setCounsellingText] = useState('');
-  const [shareWithPatient, setShareWithPatient] = useState(true);
-  const [successMsg, setSuccessMsg] = useState('');
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
 
-  const loadData = () => {
-    const notes = dbService.getCareNotes();
-    setCaregiverNotes(notes);
+  const [careNotes, setCareNotes] = useState([]);
+  const [summary, setSummary] = useState({
+    adherencePercent: 0,
+    mostMissedMedName: '—',
+    mostMissedCount: 0,
+    dailyStats: [],
+  });
+
+  const loadCareNotes = () => {
+    const list = dbService.getCareNotes(patientId);
+    // Sort by timestamp descending (newest first)
+    const sorted = list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    setCareNotes(sorted);
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    loadCareNotes();
+  }, [patientId]);
 
-  useEffect(() => dbService.subscribeToDoseLogs(patientId, (logs) => {
-    setSummary(dbService.getAdherenceSummary(patientId, logs));
-  }), [patientId]);
+  useEffect(() => {
+    const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
+      const medicines = dbService.getMedicines(patientId);
+      const stats = computeAdherenceStats(logs, medicines, 7);
+      setSummary(stats);
+    });
+    return () => unsubscribe();
+  }, [patientId]);
+
+  const [deletedNote, setDeletedNote] = useState(null);
+  const [showUndoToast, setShowUndoToast] = useState(false);
+
+  const handleDeleteNote = async (note) => {
+    setDeletedNote(note);
+    dbService.deleteCareNote(note.id);
+    setShowUndoToast(true);
+    loadCareNotes();
+    
+    setTimeout(() => {
+      setShowUndoToast(false);
+      setDeletedNote(null);
+    }, 6000);
+  };
+
+  const handleUndoDelete = () => {
+    if (deletedNote) {
+      dbService.addCareNote(deletedNote);
+      setDeletedNote(null);
+      setShowUndoToast(false);
+      loadCareNotes();
+    }
+  };
+
+  const handleAddCareNote = () => {
+    navigation?.navigate('AddCareNote', { patient: { id: patientId, name: 'Patient' }, doctor, currentUser: { id: doctor.id } });
+  };
+
+  const [activeTab, setActiveTab] = useState('Home visit');
+
+  const [counsellingText, setCounsellingText] = useState('');
+  const [shareWithPatient, setShareWithPatient] = useState(true);
+  const [showNoteModal, setShowNoteModal] = useState(false);
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleSaveCounsellingNote = () => {
     if (!counsellingText.trim()) return;
 
     dbService.addCareNote({
       patientId,
-      authorId: doctor.slmcNumber || 'usr-doctor-1',
+      authorId: doctor.id,
       authorName: doctor.name || 'Dr. K. Silva',
       authorRole: 'Doctor',
       note: counsellingText.trim(),
@@ -56,7 +106,7 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
     setShareWithPatient(true);
     setShowNoteModal(false);
     setSuccessMsg('✓ Counselling note logged successfully!');
-    loadData();
+    loadCareNotes();
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 

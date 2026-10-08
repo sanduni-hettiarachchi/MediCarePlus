@@ -28,7 +28,7 @@ export default function AccessibilityDisplayScreen({
   const [language, setLanguage] = useState(userPreferences.language || 'en');
 
   const handleSave = () => {
-    dbService.updateUser(currentUser?.id || 'usr-patient-1', {
+    dbService.updateUser(currentUser?.id, {
       largeText,
       highContrast,
       voiceReminders,

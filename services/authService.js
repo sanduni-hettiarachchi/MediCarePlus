@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Notifications from 'expo-notifications';
+import * as notificationHelper from './notificationHelper';
+import { Platform } from 'react-native';
 import { signOut as firebaseSignOut, getAuth } from 'firebase/auth';
 
 // Track active unsubscribe functions for cleanup
@@ -42,12 +43,8 @@ export const authService = {
 			console.warn('AsyncStorage clear error:', e);
 		}
 
-		// 4. Cancel pending local notifications
-		try {
-			await Notifications.cancelAllScheduledNotificationsAsync();
-		} catch (e) {
-			console.warn('Cancel notifications error:', e);
-		}
+		// 4. Cancel pending local notifications (not available on web)
+		await notificationHelper.cancelAllScheduledNotificationsAsync();
 
 		// 5. Navigate to Landing screen (works with custom navigation in App.js)
 		if (navigation) {

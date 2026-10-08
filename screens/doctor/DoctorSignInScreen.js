@@ -41,12 +41,13 @@ export default function DoctorSignInScreen({ navigation, onDoctorSignIn }) {
         setErrorMsg('Invalid professional credentials, role or registration number.');
         return;
       }
+      // Pass the user object with correct id from buildCurrentUser
       if (onDoctorSignIn) {
         onDoctorSignIn(user);
       } else if (user.role === 'pharmacist') {
-        navigation?.navigate('PharmacistPatientMedicines', { pharmacist: user });
+        navigation?.navigate('PharmacistPatients', { currentUser: user });
       } else {
-        navigation?.navigate('ScanQRCode', { doctor: user });
+        navigation?.navigate('DoctorPatients', { currentUser: user });
       }
     } catch (error) {
       setErrorMsg('Invalid email or password.');

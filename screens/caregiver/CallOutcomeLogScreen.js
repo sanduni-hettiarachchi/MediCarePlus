@@ -12,7 +12,15 @@ import dbService from '../../services/db';
 
 export default function CallOutcomeLogScreen({ navigation, route, currentUser }) {
   const alert = route?.params?.alert;
-  const patientId = route?.params?.patientId || alert?.patientId || 'usr-patient-1';
+  const patientId = route?.params?.patientId || alert?.patientId;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const patientName = route?.params?.patientName || alert?.patientName || 'Mrs. Perera';
   const medicineName = route?.params?.medicineName || alert?.medicineName || alert?.medicine || 'Medicine';
 

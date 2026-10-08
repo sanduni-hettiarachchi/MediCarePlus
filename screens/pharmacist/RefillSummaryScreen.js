@@ -12,7 +12,15 @@ import dbService from '../../services/db';
 
 export default function RefillSummaryScreen({ navigation, route }) {
   const pharmacist = route?.params?.pharmacist || { name: 'Mr. Jayasuriya', role: 'pharmacist' };
-  const patientId = route?.params?.patientId || 'usr-patient-1';
+  const patientId = route?.params?.patientId;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const patientName = route?.params?.patientName || 'Mrs. Perera';
   
   const [medicines, setMedicines] = useState([]);

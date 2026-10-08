@@ -19,8 +19,15 @@ export default function ShareWithDoctorScreen({ navigation, currentUser }) {
   const [undoConsent, setUndoConsent] = useState(null);
   const [snackbarMessage, setSnackbarMessage] = useState('');
   const [accessCode, setAccessCode] = useState('');
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const patientId = currentUser?.id;
   const patientName = currentUser?.name || 'Mrs. Perera';
+
+  useEffect(() => {
+    if (currentUser !== undefined && currentUser !== null) {
+      setIsLoadingAuth(false);
+    }
+  }, [currentUser]);
 
   useEffect(() => {
     let mounted = true;
@@ -99,11 +106,16 @@ export default function ShareWithDoctorScreen({ navigation, currentUser }) {
 
   const handleConfirmRevoke = async () => {
     if (!consentRecord) return;
-    const revoked = await dbService.removeConsent(consentRecord.id);
-    setUndoConsent(revoked);
-    setConsentRecord(null);
-    setSnackbarMessage(t('accessRevoked'));
-    setShowRevokeSheet(false);
+    try {
+      const revoked = await dbService.removeConsent(consentRecord.id);
+      setUndoConsent(revoked);
+      setConsentRecord(null);
+      setSnackbarMessage(t('accessRevoked'));
+      setShowRevokeSheet(false);
+    } catch (error) {
+      console.error('[ShareWithDoctorScreen] Revoke error:', error?.code, error?.message);
+      setSnackbarMessage(`Failed to revoke access [${error?.code || 'unknown'}]: ${error?.message || error}`);
+    }
   };
 
   const handleUndoRevoke = async () => {
@@ -180,8 +192,7 @@ export default function ShareWithDoctorScreen({ navigation, currentUser }) {
 
         <Button
           title={t('revokeAccess')}
-          style={styles.revokeBtn}
-          textStyle={styles.revokeBtnText}
+          variant="danger"
           onPress={() => setShowRevokeSheet(true)}
           disabled={isExpired}
         />
@@ -315,14 +326,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 28,
-  },
-  revokeBtn: {
-    width: '100%',
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#EF4444',
-  },
-  revokeBtnText: {
-    color: '#EF4444',
   },
 });

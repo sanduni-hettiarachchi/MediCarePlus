@@ -14,24 +14,96 @@ import { useT } from '../../i18n/LanguageContext';
 
 export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
   const t = useT();
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+  if (!patientId) {
+    throw new Error('Patient ID is required');
+  }
   const [name, setName] = useState('');
   const [dose, setDose] = useState('');
   const [times, setTimes] = useState([]);
   const [newTimeInput, setNewTimeInput] = useState('');
-  const [selectedInstruction, setSelectedInstruction] = useState('After lunch');
+  const [selectedInstruction, setSelectedInstruction] = useState('');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
   const handleAddTime = () => {
     const trimmed = newTimeInput.trim();
-    if (!trimmed) return;
-    if (times.includes(trimmed)) {
-      // Duplicates ignored
+    if (!trimmed) {
+      setErrorMsg('Enter a time like 1:00 PM');
       return;
     }
-    setTimes([...times, trimmed]);
+
+    // Parse and normalize time formats
+    let normalizedTime;
+    try {
+      normalizedTime = normalizeTime(trimmed);
+    } catch (e) {
+      setErrorMsg('Enter a time like 1:00 PM');
+      return;
+    }
+
+    if (times.includes(normalizedTime)) {
+      setErrorMsg('This time is already added');
+      return;
+    }
+
+    setTimes([...times, normalizedTime]);
     setNewTimeInput('');
+    setErrorMsg('');
+  };
+
+  const normalizeTime = (timeStr) => {
+    // Handle formats: "1:00 PM", "1.00pm", "13:00", "1pm"
+    const lower = timeStr.toLowerCase().replace(/\./g, ':');
+    
+    // Extract hours and minutes
+    let hours, minutes, isPM = false;
+    
+    if (lower.includes('pm')) {
+      isPM = true;
+      const timePart = lower.replace('pm', '').trim();
+      const parts = timePart.split(':');
+      hours = parseInt(parts[0], 10);
+      minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+    } else if (lower.includes('am')) {
+      const timePart = lower.replace('am', '').trim();
+      const parts = timePart.split(':');
+      hours = parseInt(parts[0], 10);
+      minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+    } else {
+      // 24-hour format or just hours
+      const parts = lower.split(':');
+      hours = parseInt(parts[0], 10);
+      minutes = parts[1] ? parseInt(parts[1], 10) : 0;
+      if (hours >= 12) {
+        isPM = true;
+        if (hours > 12) hours -= 12;
+      }
+    }
+
+    // Validate
+    if (isNaN(hours) || isNaN(minutes)) {
+      throw new Error('Invalid time');
+    }
+    if (hours < 0 || hours > 23) {
+      throw new Error('Invalid hours');
+    }
+    if (minutes < 0 || minutes > 59) {
+      throw new Error('Invalid minutes');
+    }
+
+    // Convert to 12-hour format
+    if (isPM && hours !== 12) hours += 12;
+    if (!isPM && hours === 12) hours = 0;
+
+    const date = new Date();
+    date.setHours(hours, minutes, 0, 0);
+
+    const formattedHours = date.getHours() % 12 || 12;
+    const formattedMinutes = date.getMinutes().toString().padStart(2, '0');
+    const ampm = date.getHours() >= 12 ? 'PM' : 'AM';
+
+    return `${formattedHours}:${formattedMinutes} ${ampm}`;
   };
 
   const handleRemoveTime = (timeToRemove) => {
@@ -39,21 +111,11 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
   };
 
   const handleSave = async () => {
-    if (!name.trim()) {
-      setErrorMsg(t('medicineRequired'));
-      return;
-    }
-    if (!dose.trim()) {
-      setErrorMsg(t('dosageRequired'));
-      return;
-    }
-    if (times.length === 0) {
-      setErrorMsg(t('reminderRequired'));
+    if (!name.trim() || !dose.trim() || times.length === 0) {
+      setErrorMsg('Please fill in medicine name, dosage, and at least one time.');
       return;
     }
 
-    setErrorMsg('');
-    
     try {
       const newMed = await dbService.addMedicine(
         {
@@ -103,6 +165,7 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
             value={name}
             onChangeText={setName}
             placeholder={t('medicineNamePlaceholder')}
+            autoComplete="off"
           />
         </View>
 
@@ -114,6 +177,7 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
             value={dose}
             onChangeText={setDose}
             placeholder={t('dosagePlaceholder')}
+            autoComplete="off"
           />
         </View>
 
@@ -145,6 +209,7 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
               value={newTimeInput}
               onChangeText={setNewTimeInput}
               placeholder={t('timePlaceholder')}
+              autoComplete="off"
             />
             <TouchableOpacity style={styles.addTimeBtn} onPress={handleAddTime}>
               <Text style={styles.addTimeBtnText}>{t('addTime')}</Text>
@@ -181,6 +246,7 @@ export default function AddMedicineDetailsScreen({ navigation, currentUser }) {
             value={notes}
             onChangeText={setNotes}
             placeholder={t('notesPlaceholder')}
+            autoComplete="off"
           />
         </View>
 

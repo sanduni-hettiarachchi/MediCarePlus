@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, View } from 'react-native';
 import Text from './PatientText';
 
-export default function PrescriptionCard({ prescription, onViewImage, onDownload }) {
+export default function PrescriptionCard({ prescription, onViewImage, onDownload, onDelete }) {
   return (
     <View style={styles.card}>
       <View style={styles.topRow}>
@@ -10,8 +10,15 @@ export default function PrescriptionCard({ prescription, onViewImage, onDownload
           <Text style={styles.doctorName}>{prescription.doctorName || 'Dr. K. Silva'}</Text>
           <Text style={styles.date}>{prescription.date || '18 Sep 2026'}</Text>
         </View>
-        <View style={styles.statusBadge}>
-          <Text style={styles.statusText}>{prescription.status || 'Active'}</Text>
+        <View style={styles.topRowRight}>
+          <View style={styles.statusBadge}>
+            <Text style={styles.statusText}>{prescription.status || 'Active'}</Text>
+          </View>
+          {onDelete && (
+            <TouchableOpacity style={styles.deleteBtn} onPress={() => onDelete(prescription)}>
+              <Text style={styles.deleteBtnText}>🗑</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 
@@ -53,6 +60,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+  },
+  topRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   doctorName: {
     fontSize: 16,
@@ -123,5 +135,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+  },
+  deleteBtn: {
+    padding: 4,
+  },
+  deleteBtnText: {
+    fontSize: 16,
   },
 });

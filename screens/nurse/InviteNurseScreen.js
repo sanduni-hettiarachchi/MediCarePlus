@@ -30,8 +30,7 @@ export default function InviteNurseScreen({ navigation }) {
       name: 'Nurse Dilani',
       email: nurseSearch.trim(),
       role: 'nurse',
-      nurseId: 'N-2041',
-      patientId: 'usr-patient-1',
+      nurseId: 'N-2041', // Display field only, not used as ID
     });
 
     setAddedSuccess(true);

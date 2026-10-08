@@ -11,7 +11,7 @@ export default function AdherenceCalendarScreen({ navigation, currentUser, route
   const [selectedPeriod, setSelectedPeriod] = useState('month');
   const [referenceDate, setReferenceDate] = useState(new Date());
   const [doseLogs, setDoseLogs] = useState([]);
-  const [patientId, setPatientId] = useState('usr-patient-1');
+  const [patientId, setPatientId] = useState(null);
 
   useEffect(() => {
     if (route?.params?.patientId) {

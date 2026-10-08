@@ -14,7 +14,7 @@ import Header from '../../components/Header';
 import UndoSnackbar from '../../components/UndoSnackbar';
 import dbService from '../../services/db';
 
-export default function ManagePatientScheduleScreen({ navigation, onNavigateTab, hasAlertBadge = false, currentUser }) {
+export default function ManagePatientScheduleScreen({ navigation, onNavigateTab, hasAlertBadge = false, currentUser, route }) {
   const [medicines, setMedicines] = useState([]);
   const [editingMed, setEditingMed] = useState(null);
   const [newTime, setNewTime] = useState('');
@@ -22,15 +22,23 @@ export default function ManagePatientScheduleScreen({ navigation, onNavigateTab,
   const [removedDose, setRemovedDose] = useState(null);
   const [snackbarMsg, setSnackbarMsg] = useState('');
 
+  // Get patientId from route params or from active care link
+  const routePatientId = route?.params?.patientId;
   const caregiverId = currentUser?.id || 'usr-caregiver-1';
   const links = dbService.getCareLinksForMember(caregiverId);
   const activeLink = links.find((l) => l.status === 'Active');
+  const patientId = routePatientId || activeLink?.patientId;
+  
   const permissions = activeLink?.permissions || { viewSchedule: true, editSchedule: false };
   const canViewSchedule = permissions.viewSchedule !== false;
   const canEditSchedule = permissions.editSchedule === true;
 
   const loadData = () => {
-    const list = dbService.getMedicines();
+    if (!patientId) {
+      setMedicines([]);
+      return;
+    }
+    const list = dbService.getMedicines().filter(m => m.patientId === patientId);
     const enriched = list.map((m) => {
       const times = dbService.getReminderTimes(m.id);
       return { ...m, timeStr: times[0] ? times[0].timeStr : '9:00 AM' };

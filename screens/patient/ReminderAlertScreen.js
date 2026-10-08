@@ -17,7 +17,15 @@ export default function ReminderAlertScreen({ navigation, route, currentUser, us
     mealInstruction: 'After lunch',
     time: '1:00 PM',
   };
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const [snoozesUsed, setSnoozesUsed] = useState(0);
   const [caregiverNotified, setCaregiverNotified] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');

@@ -5,12 +5,14 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { updateDoc, doc, onSnapshot, collection, query, where, orderBy } from 'firebase/firestore';
 import Header from '../../components/Header';
 import NotificationCard from '../../components/NotificationCard';
 import Text from '../../components/PatientText';
 import OfflineBanner from '../../components/OfflineBanner';
 import { useT } from '../../i18n/LanguageContext';
 import dbService from '../../services/db';
+import * as notificationHelper from '../../services/notificationHelper';
 
 const initialNotifications = [
   {
@@ -54,9 +56,10 @@ const initialNotifications = [
 export default function NotificationsScreen({ navigation, route, isOffline = false, onRetryOffline, currentUser }) {
   const t = useT();
   const [activeFilter, setActiveFilter] = useState('all');
-  const [notifications, setNotifications] = useState(initialNotifications);
+  const [notifications, setNotifications] = useState([]);
   const [errorText, setErrorText] = useState(null);
   const userId = currentUser?.id || route?.params?.currentUser?.id;
+  const userRole = currentUser?.role || route?.params?.currentUser?.role || 'patient';
 
   const formatTimeAgo = (timestamp) => {
     if (!timestamp) return 'Just now';
@@ -74,34 +77,39 @@ export default function NotificationsScreen({ navigation, route, isOffline = fal
   useEffect(() => {
     if (!userId) return;
 
-    const unsubscribe = dbService.subscribeToNotifications(
-      userId,
-      (dbNotifs) => {
-        const formattedDb = dbNotifs.map((n) => ({
-          id: n.id,
-          categoryKey: n.categoryKey || n.type || 'updates',
-          title: n.title || (n.titleKey ? t(n.titleKey) : 'Notification'),
-          message: n.body || n.message || (n.messageKey ? t(n.messageKey) : ''),
-          time: n.time || formatTimeAgo(n.createdAt),
-          read: n.read || false,
-          createdAt: n.createdAt?.toMillis?.() || Number(n.createdAt) || Date.now(),
-        }));
+    const firestoreDb = dbService.getFirestoreDb?.();
+    if (!firestoreDb) {
+      console.error('[NotificationsScreen] Firestore not available');
+      return;
+    }
 
-        // Merge initial sample notifications with real-time notifications
-        const mergedMap = new Map();
-        initialNotifications.forEach((item) => mergedMap.set(item.id, item));
-        formattedDb.forEach((item) => mergedMap.set(item.id, item));
-
-        const mergedList = Array.from(mergedMap.values()).sort(
-          (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
-        );
-        setNotifications(mergedList);
-      },
-      (err) => {
-        console.error('[NotificationsScreen] subscription error:', err);
-        setErrorText(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
-      }
+    const q = query(
+      collection(firestoreDb, 'notifications'),
+      where('userId', '==', userId),
+      orderBy('createdAt', 'desc')
     );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const dbNotifs = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      
+      const formattedDb = dbNotifs.map((n) => ({
+        id: n.id,
+        categoryKey: n.type || 'updates',
+        title: n.title || 'Notification',
+        message: n.body || '',
+        time: formatTimeAgo(n.createdAt),
+        read: n.read || false,
+        createdAt: n.createdAt?.toMillis?.() || Number(n.createdAt) || Date.now(),
+        relatedId: n.relatedId,
+        patientId: n.patientId,
+      }));
+
+      setNotifications(formattedDb);
+    }, (err) => {
+      console.error('[NotificationsScreen] subscription error:', err.code, err.message);
+      setErrorText(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
+    });
+
     return () => {
       if (typeof unsubscribe === 'function') unsubscribe();
     };
@@ -116,11 +124,34 @@ export default function NotificationsScreen({ navigation, route, isOffline = fal
     return cat === activeFilter;
   });
 
-  const handleMarkRead = (id) => {
-    dbService.markNotificationAsRead(id);
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+  const handleMarkRead = async (id) => {
+    try {
+      const firestoreDb = dbService.getFirestoreDb?.();
+      if (firestoreDb) {
+        await updateDoc(doc(firestoreDb, 'notifications', id), { read: true });
+      }
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n))
+      );
+    } catch (err) {
+      console.error('[NotificationsScreen] Error marking read:', err.code, err.message);
+    }
+  };
+
+  const handleNotificationPress = (item) => {
+    // Mark as read
+    handleMarkRead(item.id);
+
+    // Navigate based on notification type
+    if (item.categoryKey === 'care_note' && item.relatedId) {
+      // Open care notes screen based on user role
+      if (userRole === 'patient') {
+        navigation?.navigate('PatientCareNotes', { currentUser });
+      } else if (userRole === 'caregiver' && item.patientId) {
+        // Need selectedPatientLink from context - for now navigate to profiles
+        navigation?.navigate('CaregiverProfiles', { currentUser });
+      }
+    }
   };
 
   const filterTabs = [
@@ -174,7 +205,7 @@ export default function NotificationsScreen({ navigation, route, isOffline = fal
             message: item.message || (item.messageKey ? t(item.messageKey) : ''),
             time: item.time || (item.timeKey ? t(item.timeKey) : 'Just now'),
           };
-          return <NotificationCard key={item.id} notification={notification} onPress={() => handleMarkRead(item.id)} />;
+          return <NotificationCard key={item.id} notification={notification} onPress={() => handleNotificationPress(item)} />;
         })}
       </ScrollView>
     </View>

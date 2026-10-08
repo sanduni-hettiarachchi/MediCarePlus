@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -12,9 +12,10 @@ import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
 export default function InviteNurseScreen({ navigation, route, currentUser }) {
-  const patientId = route?.params?.patientId || currentUser?.id || 'usr-patient-1';
+  const patientId = route?.params?.patientId || currentUser?.id;
   const onAdd = route?.params?.onAdd;
   const patientName = currentUser?.name || 'Patient';
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [permissions, setPermissions] = useState({
@@ -28,51 +29,70 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
   const [formError, setFormError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    if (currentUser !== undefined && currentUser !== null) {
+      setIsLoadingAuth(false);
+    }
+  }, [currentUser]);
+
   const handleAddNurse = async () => {
-    setFormError('');
     setLoading(true);
-    
-    if (!searchQuery.trim()) {
-      setFormError('Please enter an email address');
-      setLoading(false);
-      return;
-    }
+    setFormError('');
 
-    const email = searchQuery.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      setFormError('Please enter a valid email address');
-      setLoading(false);
-      return;
-    }
+    try {
+      const email = searchQuery.trim().toLowerCase();
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        setFormError('Please enter a valid email address');
+        setLoading(false);
+        return;
+      }
 
-    const user = await dbService.findUserByEmail(email);
-    if (!user) {
-      setFormError('No account with this email. Ask them to sign up first.');
-      setLoading(false);
-      return;
-    }
+      const user = await dbService.findUserByEmail(email);
+      if (!user) {
+        setFormError('No account with this email. Ask them to sign up first.');
+        setLoading(false);
+        return;
+      }
 
-    if (user.role !== 'nurse') {
-      setFormError('This user is not a nurse.');
-      setLoading(false);
-      return;
-    }
+      if (user.role !== 'nurse') {
+        setFormError('This user is not a nurse.');
+        setLoading(false);
+        return;
+      }
 
-    await dbService.addCareLink({
-      patientId,
-      memberId: user.id,
-      memberName: user.name,
-      role: 'nurse',
-      status: 'Pending',
-      permissions,
-      email: user.email,
-      addedBy: patientName,
-    });
-    
-    setLoading(false);
-    if (onAdd) onAdd();
-    else navigation?.goBack();
+      if (!patientId || !currentUser?.id) {
+        setFormError('Patient ID or user ID not available. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      const careLinkPayload = {
+        patientId,
+        memberId: user.id,
+        memberName: user.name,
+        role: 'nurse',
+        status: 'Pending',
+        permissions,
+        email: user.email,
+        addedBy: patientName,
+      };
+
+      console.log('[InviteNurseScreen] addCareLink payload:', careLinkPayload);
+      console.log('[InviteNurseScreen] currentUser.id:', currentUser.id, 'patientId:', patientId, 'patientId === currentUser.id:', patientId === currentUser.id);
+
+      await dbService.addCareLink(careLinkPayload);
+
+      setFormError('');
+      setSearchQuery('');
+      if (onAdd) onAdd(careLinkPayload);
+      navigation?.goBack();
+    } catch (error) {
+      console.error('[InviteNurseScreen] error:', error);
+      setFormError(error?.message || 'Failed to add nurse. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleGenerateQR = () => {
@@ -172,7 +192,7 @@ export default function InviteNurseScreen({ navigation, route, currentUser }) {
 
         {formError ? <Text style={styles.errorText}>{formError}</Text> : null}
 
-        <Button title="Add nurse" onPress={handleAddNurse} style={styles.addBtn} disabled={loading} />
+        <Button title="Add nurse" onPress={handleAddNurse} style={styles.addBtn} disabled={loading || isLoadingAuth} />
       </ScrollView>
     </View>
   );

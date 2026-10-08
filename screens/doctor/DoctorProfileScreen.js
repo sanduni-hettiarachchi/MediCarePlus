@@ -15,9 +15,7 @@ import dbService from '../../services/db';
 
 export default function DoctorProfileScreen({ navigation, route, onLogout }) {
   const doctor = route?.params?.doctor || {
-    id: 'usr-doctor-1',
     name: 'Dr. K. Silva',
-    age: '45',
     email: 'dr.silva@hospital.lk',
     phone: '+94 77 234 5678',
     slmcNumber: '12345',

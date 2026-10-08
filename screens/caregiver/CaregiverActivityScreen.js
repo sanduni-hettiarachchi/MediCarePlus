@@ -23,7 +23,7 @@ export default function CaregiverActivityScreen({ navigation, onNavigateTab, use
   const [todayLogs, setTodayLogs] = useState([]);
   const [activeFilter, setActiveFilter] = useState('All');
   const [errorMessage, setErrorMessage] = useState('');
-  const [patientId, setPatientId] = useState('usr-patient-1');
+  const [patientId, setPatientId] = useState(null);
 
   useEffect(() => {
     const links = dbService.getCareLinksForMember(currentUser?.id);

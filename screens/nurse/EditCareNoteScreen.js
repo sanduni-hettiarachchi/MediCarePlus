@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { doc, updateDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import Button from '../../components/Button';
 import Header from '../../components/Header';
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
@@ -13,16 +14,18 @@ import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
 export default function EditCareNoteScreen({ navigation, route, currentUser }) {
-  const patient = route?.params?.patient || { name: 'Mrs. Perera', id: 'usr-patient-1' };
-  const nurse = route?.params?.nurse || { name: 'Nurse Dilani', id: currentUser?.id };
+  const patient = route?.params?.patient || { name: 'Patient' };
+  const patientId = route?.params?.patientId || patient.id;
+  const nurse = route?.params?.nurse || { name: currentUser?.name || 'Nurse' };
   const existingNote = route?.params?.existingNote;
-  const patientId = patient.id || 'usr-patient-1';
 
   const [noteText, setNoteText] = useState(existingNote ? existingNote.text || existingNote.note : '');
   const [dateTimeStr, setDateTimeStr] = useState('');
-  const [shareWithPatient, setShareWithPatient] = useState(existingNote ? existingNote.visibleToPatient : false);
+  const [shareWithPatient, setShareWithPatient] = useState(existingNote ? existingNote.visibleToPatient : true);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [showDeleteSheet, setShowDeleteSheet] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => {
     if (existingNote) {
@@ -37,34 +40,90 @@ export default function EditCareNoteScreen({ navigation, route, currentUser }) {
   }, [existingNote]);
 
   const handleSaveNote = async () => {
-    if (!noteText.trim()) return;
-    const authorId = currentUser?.id || nurse.id;
-    const authorName = currentUser?.name || nurse.name || 'Nurse Dilani';
+    if (!noteText.trim() || saving) return;
 
-    if (existingNote) {
-      await dbService.updateCareNote(existingNote.id, { text: noteText.trim(), visibleToPatient: shareWithPatient });
-    } else {
-      const noteData = {
-        patientId,
-        authorId,
-        authorName,
-        authorRole: 'nurse',
-        text: noteText.trim(),
-        visibleToPatient: shareWithPatient,
-      };
-      await dbService.addCareNote(noteData);
+    setSaving(true);
+    setErrorMessage('');
+    setSavedSuccess(false);
+
+    const authorId = currentUser?.id;
+
+    if (!authorId) {
+      setErrorMessage('No authenticated user');
+      setSaving(false);
+      return;
     }
 
-    setSavedSuccess(true);
-    setTimeout(() => {
-      navigation?.goBack();
-    }, 1500);
+    if (!existingNote) {
+      setErrorMessage('No note to edit');
+      setSaving(false);
+      return;
+    }
+
+    // Only the author can edit
+    if (existingNote.authorId !== authorId) {
+      setErrorMessage('Only the author can edit this note');
+      setSaving(false);
+      return;
+    }
+
+    try {
+      const firestoreDb = dbService.getFirestoreDb?.();
+      if (!firestoreDb) {
+        throw new Error('Firestore not available');
+      }
+
+      const noteRef = doc(firestoreDb, 'care_notes', existingNote.id);
+      await updateDoc(noteRef, {
+        text: noteText.trim(),
+        visibleToPatient: shareWithPatient,
+        editedAt: serverTimestamp()
+      });
+
+      console.log('[EditCareNote] Updated note:', existingNote.id);
+      setSavedSuccess(true);
+
+      setTimeout(() => {
+        navigation?.goBack();
+      }, 1500);
+    } catch (err) {
+      console.error('[EditCareNote] Save error:', err.code, err.message);
+      setErrorMessage(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleDeleteNote = () => {
-    if (existingNote) {
-      dbService.deleteCareNote(existingNote.id);
+  const handleDeleteNote = async () => {
+    if (!existingNote) return;
+
+    const authorId = currentUser?.id;
+    if (!authorId) {
+      setErrorMessage('No authenticated user');
+      return;
+    }
+
+    // Only the author can delete
+    if (existingNote.authorId !== authorId) {
+      setErrorMessage('Only the author can delete this note');
+      return;
+    }
+
+    try {
+      const firestoreDb = dbService.getFirestoreDb?.();
+      if (!firestoreDb) {
+        throw new Error('Firestore not available');
+      }
+
+      const noteRef = doc(firestoreDb, 'care_notes', existingNote.id);
+      await deleteDoc(noteRef);
+
+      console.log('[EditCareNote] Deleted note:', existingNote.id);
+      setShowDeleteSheet(false);
       navigation?.goBack();
+    } catch (err) {
+      console.error('[EditCareNote] Delete error:', err.code, err.message);
+      setErrorMessage(err.code ? `${err.code}: ${err.message}` : String(err?.message || err));
     }
   };
 
@@ -82,6 +141,12 @@ export default function EditCareNoteScreen({ navigation, route, currentUser }) {
             <Text style={styles.successText}>✓ Note saved</Text>
           </View>
         )}
+
+        {errorMessage ? (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorText}>⚠️ {errorMessage}</Text>
+          </View>
+        ) : null}
 
         <View style={styles.card}>
           <Text style={styles.label}>NOTE</Text>
@@ -168,6 +233,20 @@ const styles = StyleSheet.create({
     color: '#0D8F7A',
     fontSize: 13,
     fontWeight: '700',
+    textAlign: 'center',
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    borderColor: '#EF4444',
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 16,
+  },
+  errorText: {
+    color: '#DC2626',
+    fontSize: 14,
+    fontWeight: '600',
     textAlign: 'center',
   },
   card: {

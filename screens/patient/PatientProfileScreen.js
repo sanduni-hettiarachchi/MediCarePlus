@@ -26,7 +26,7 @@ export default function PatientProfileScreen({
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
 
   useEffect(() => {
-    const u = dbService.getUserById(currentUser?.id) || currentUser || dbService.getUserById('usr-patient-1');
+  const u = dbService.getUserById(currentUser?.id) || currentUser;
     if (u) setUser(u);
   }, [currentUser?.id]);
 

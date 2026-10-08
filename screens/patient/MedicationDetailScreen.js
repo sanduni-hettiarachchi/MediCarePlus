@@ -55,21 +55,22 @@ export default function MedicationDetailScreen({ navigation, route, currentUser 
       const res = await dbService.deleteMedicine(medicine.id, pid);
       setUndoData(res);
       setSnackbarMsg(`Deleted ${medicine.name}`);
-      try {
-        const Notifications = require('expo-notifications');
-        if (Notifications?.cancelScheduledNotificationAsync) {
-          timesList.forEach(async (t) => {
-            await Notifications.cancelScheduledNotificationAsync(`med-${medicine.id}-${t}`);
-          });
-        }
-      } catch (e) {
-        // Notifications fallback ignore
-      }
+      
+      // Cancel notifications using helper (handles web gracefully)
+      const notificationHelper = require('../../services/notificationHelper');
+      timesList.forEach(async (t) => {
+        await notificationHelper.cancelScheduledNotificationAsync(`med-${medicine.id}-${t}`);
+      });
 
       const timer = setTimeout(() => {
         setSnackbarMsg('');
         setUndoData(null);
-        navigation?.goBack();
+        try {
+          navigation?.goBack();
+        } catch (navError) {
+          console.error('Navigation error after delete:', navError);
+          setErrorText('Failed to navigate back. Please use the back button.');
+        }
       }, 6000);
       setUndoTimer(timer);
     } catch (err) {

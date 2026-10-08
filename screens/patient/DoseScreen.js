@@ -9,7 +9,15 @@ import Text from '../../components/PatientText';
 
 export default function DoseScreen({ navigation, route, currentUser }) {
   const t = useT();
-  const patientId = currentUser?.id || 'usr-patient-1';
+  const patientId = currentUser?.id;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const medicine = route?.params?.medicine || {
     id: 'med-2',
     name: 'Blood pressure tablet',

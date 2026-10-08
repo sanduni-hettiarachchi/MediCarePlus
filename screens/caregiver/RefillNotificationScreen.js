@@ -16,7 +16,7 @@ import { useT } from '../../i18n/LanguageContext';
 export default function RefillNotificationScreen({ navigation, route, onNavigateTab, hasAlertBadge = false, currentUser }) {
   const t = useT();
   const medicineParam = route?.params?.medicine;
-  const [patientId, setPatientId] = useState('usr-patient-1');
+  const [patientId, setPatientId] = useState(null);
 
   useEffect(() => {
     const links = dbService.getCareLinksForMember(currentUser?.id);

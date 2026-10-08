@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { updateDoc, doc, serverTimestamp, getDoc } from 'firebase/firestore';
 import BottomSheetConfirmation from '../../components/BottomSheetConfirmation';
 import Button from '../../components/Button';
 import FiveTabBottomBar from '../../components/FiveTabBottomBar';
@@ -31,7 +32,10 @@ export default function CaregiverProfilesScreen({
       email: 'kumari@example.com',
     }
   );
-  const [patient, setPatient] = useState(null);
+  const [careLinks, setCareLinks] = useState([]);
+  const [patientDataMap, setPatientDataMap] = useState({});
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [selectedPatientLink, setSelectedPatientLink] = useState(null);
   const [patientError, setPatientError] = useState('');
   const [showLogoutSheet, setShowLogoutSheet] = useState(false);
 
@@ -50,27 +54,55 @@ export default function CaregiverProfilesScreen({
   }, [currentUser]);
 
   useEffect(() => {
-    const loadLinkedPatient = async () => {
-      try {
-        setPatientError('');
-        const caregiverId = currentUser?.id || profileUser?.id || 'usr-caregiver-1';
-        const links = dbService.getCareLinksForMember(caregiverId);
-        const activeLink = links.find((l) => l.status === 'Active');
-        let patientRecord = null;
-        if (activeLink) {
-          patientRecord = dbService.getUserById(activeLink.patientId);
+    const caregiverId = currentUser?.id || profileUser?.id || 'usr-caregiver-1';
+    console.log('[CaregiverProfilesScreen] Loading care_links for memberId:', caregiverId);
+    
+    const unsubscribe = dbService.subscribeToCareLinksForMember(caregiverId, async (links) => {
+      console.log('[CaregiverProfilesScreen] Found', links.length, 'care_links');
+      setCareLinks(links);
+      
+      // Fetch patient data for each link from users doc
+      const firestoreDb = dbService.getFirestoreDb?.();
+      const patientMap = {};
+      
+      for (const link of links) {
+        try {
+          if (firestoreDb) {
+            const patientDoc = await getDoc(doc(firestoreDb, 'users', link.patientId));
+            if (patientDoc.exists()) {
+              patientMap[link.patientId] = { id: patientDoc.id, ...patientDoc.data() };
+            }
+          } else {
+            // Fallback to local cache
+            const patient = dbService.getUserById(link.patientId);
+            if (patient) {
+              patientMap[link.patientId] = patient;
+            }
+          }
+        } catch (err) {
+          console.warn('[CaregiverProfilesScreen] Failed to load patient data for', link.patientId, err.code);
         }
-        if (!patientRecord && (currentUser?.patientId || profileUser?.patientId)) {
-          const pid = currentUser?.patientId || profileUser?.patientId || 'usr-patient-1';
-          patientRecord = dbService.getUserById(pid);
-        }
-        setPatient(patientRecord || null);
-      } catch (err) {
-        console.error('CaregiverProfilesScreen error loading linked patient:', err);
-        setPatientError('Failed to load linked patient details.');
       }
+      
+      setPatientDataMap(patientMap);
+      
+      // Set selected patient to first active link if available
+      const activeLink = links.find((l) => l.status === 'Active');
+      if (activeLink && patientMap[activeLink.patientId]) {
+        setSelectedPatient(patientMap[activeLink.patientId]);
+        setSelectedPatientLink(activeLink);
+      } else {
+        setSelectedPatient(null);
+        setSelectedPatientLink(null);
+      }
+    }, (error) => {
+      console.error('[CaregiverProfilesScreen] care_links error:', error.code, error.message);
+      setPatientError('Failed to load patient links: ' + (error.message || 'Please try again.'));
+    });
+    
+    return () => {
+      if (unsubscribe && typeof unsubscribe === 'function') unsubscribe();
     };
-    loadLinkedPatient();
   }, [currentUser, profileUser]);
 
   const handleStartEdit = () => {
@@ -79,6 +111,54 @@ export default function CaregiverProfilesScreen({
     setEditEmail(profileUser.email || '');
     setEditError('');
     setIsEditing(true);
+  };
+
+  const handleAcceptInvite = async (linkId) => {
+    try {
+      const firestoreDb = dbService.getFirestoreDb?.();
+      if (firestoreDb) {
+        await updateDoc(doc(firestoreDb, 'care_links', linkId), {
+          status: 'Active'
+        });
+        console.log('[CaregiverProfilesScreen] Accepted invite:', linkId);
+      } else {
+        await dbService.updateCareLink(linkId, { status: 'Active' });
+      }
+    } catch (err) {
+      console.error('[CaregiverProfilesScreen] Error accepting invite:', err.code, err.message);
+      setPatientError('Failed to accept invite: ' + (err.message || 'Please try again.'));
+    }
+  };
+
+  const handleDeclineInvite = async (linkId) => {
+    try {
+      const firestoreDb = dbService.getFirestoreDb?.();
+      if (firestoreDb) {
+        await updateDoc(doc(firestoreDb, 'care_links', linkId), {
+          status: 'Declined'
+        });
+        console.log('[CaregiverProfilesScreen] Declined invite:', linkId);
+      } else {
+        await dbService.updateCareLink(linkId, { status: 'Declined' });
+      }
+    } catch (err) {
+      console.error('[CaregiverProfilesScreen] Error declining invite:', err.code, err.message);
+      setPatientError('Failed to decline invite: ' + (err.message || 'Please try again.'));
+    }
+  };
+
+  const handleSelectPatient = (link) => {
+    // Toggle selection: if already selected, deselect
+    if (selectedPatientLink?.id === link.id) {
+      console.log('[CaregiverProfiles] Deselected patient:', link.patientId);
+      setSelectedPatient(null);
+      setSelectedPatientLink(null);
+    } else {
+      console.log('[CaregiverProfiles] Selected patient:', link.patientId, 'name:', link.patientName);
+      const patientRecord = dbService.getUserById(link.patientId);
+      setSelectedPatient(patientRecord || { id: link.patientId, name: link.patientName || 'Patient' });
+      setSelectedPatientLink(link);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -228,81 +308,156 @@ export default function CaregiverProfilesScreen({
           </View>
         )}
 
-        {/* Linked Patient Section */}
-        <Text style={styles.sectionHeader}>LINKED PATIENT</Text>
+        {/* My Patients Section */}
+        <Text style={styles.sectionHeader}>MY PATIENTS</Text>
 
         {patientError ? (
           <View style={styles.emptyPatientCard}>
             <Text style={styles.errorText}>{patientError}</Text>
           </View>
-        ) : patient ? (
-          <TouchableOpacity
-            style={styles.patientCard}
-            onPress={() => navigation?.navigate('ManagePatientSchedule')}
-          >
-            <View style={styles.avatar}>
-              <Text style={styles.avatarText}>
-                {patient.name ? patient.name.charAt(0) : 'P'}
-              </Text>
-            </View>
-            <View style={styles.patientInfo}>
-              <Text style={styles.patientName}>{patient.name}</Text>
-              <Text style={styles.patientSub}>
-                {patient.gender || 'Female'} · {patient.age || '68'} · Linked Patient
-              </Text>
-              <Text style={styles.patientPhone}>{patient.phone || '0771234567'}</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        ) : (
+        ) : careLinks.length === 0 ? (
           <View style={styles.emptyPatientCard}>
-            <Text style={styles.emptyPatientTitle}>No patient linked yet</Text>
+            <Text style={styles.emptyPatientTitle}>No patients linked yet</Text>
             <Text style={styles.emptyPatientSub}>
-              Linked patient details will appear here once connected.
+              Patient invites will appear here once sent.
             </Text>
           </View>
+        ) : (
+          careLinks.map((link) => {
+            const patient = patientDataMap[link.patientId];
+            const patientName = patient?.name || 'Patient';
+            const patientGender = patient?.gender;
+            const patientAge = patient?.age;
+            const patientPhone = patient?.phone;
+            const isSelected = selectedPatientLink?.id === link.id;
+            
+            // Build permissions labels for Pending links
+            const permLabels = [];
+            if (link.permissions?.viewSchedule) permLabels.push('View Schedule');
+            if (link.permissions?.editSchedule) permLabels.push('Edit Schedule');
+            if (link.permissions?.viewAdherence) permLabels.push('View Adherence');
+            if (link.permissions?.viewCareNotes) permLabels.push('View Notes');
+            if (link.permissions?.addNotes) permLabels.push('Add Notes');
+            const permText = permLabels.length > 0 ? permLabels.join(', ') : 'No specific permissions';
+            
+            return (
+              <View key={link.id} style={styles.patientLinkCard}>
+                <TouchableOpacity
+                  style={[styles.patientCard, isSelected && styles.selectedPatientCard]}
+                  onPress={() => link.status === 'Active' && handleSelectPatient(link)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.avatar}>
+                    <Text style={styles.avatarText}>
+                      {patientName.charAt(0)}
+                    </Text>
+                  </View>
+                  <View style={styles.patientInfo}>
+                    <Text style={styles.patientName}>{patientName}</Text>
+                    <Text style={styles.patientSub}>
+                      {link.status === 'Pending' ? 'Pending invite' : link.status}
+                      {patientGender && ` · ${patientGender}`}
+                      {patientAge && ` · ${patientAge}`}
+                    </Text>
+                    {patientPhone && <Text style={styles.patientPhone}>{patientPhone}</Text>}
+                    {link.status === 'Pending' && (
+                      <Text style={styles.permissionsText}>{permText}</Text>
+                    )}
+                  </View>
+                  {link.status === 'Active' && <Text style={styles.chevron}>›</Text>}
+                </TouchableOpacity>
+                
+                {link.status === 'Pending' && (
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.acceptBtn]}
+                      onPress={() => handleAcceptInvite(link.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.actionBtnText}>Accept</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.actionBtn, styles.declineBtn]}
+                      onPress={() => handleDeclineInvite(link.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={styles.actionBtnText}>Decline</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                
+                {link.status === 'Active' && (
+                  <TouchableOpacity
+                    style={[styles.selectBtn, isSelected && styles.selectedBtn]}
+                    onPress={() => handleSelectPatient(link)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.selectBtnText}>
+                      {isSelected ? 'Selected ✓' : 'Select'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            );
+          })
         )}
 
         {/* Remote Management */}
         <Text style={styles.sectionHeader}>REMOTE MANAGEMENT</Text>
 
-        <View style={styles.cardGroup}>
-          <TouchableOpacity
-            style={styles.actionRow}
-            onPress={() => navigation?.navigate('MyPrescriptions')}
-          >
-            <Text style={styles.actionIcon}>📜</Text>
-            <View style={styles.actionTextCol}>
-              <Text style={styles.actionTitle}>My Prescriptions</Text>
-              <Text style={styles.actionSub}>View and add prescriptions</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+        {!selectedPatient ? (
+          <View style={styles.disabledCardGroup}>
+            <TouchableOpacity style={[styles.actionRow, styles.disabledActionRow]}>
+              <Text style={styles.actionIcon}>📜</Text>
+              <View style={styles.actionTextCol}>
+                <Text style={styles.actionTitle}>My Prescriptions</Text>
+                <Text style={styles.actionSub}>View and add prescriptions</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionRow}
-            onPress={() => navigation?.navigate('ManagePatientSchedule')}
-          >
-            <Text style={styles.actionIcon}>📅</Text>
-            <View style={styles.actionTextCol}>
-              <Text style={styles.actionTitle}>Manage patient's schedule</Text>
-              <Text style={styles.actionSub}>View or change dose times</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionRow, styles.disabledActionRow]}>
+              <Text style={styles.actionIcon}>📅</Text>
+              <View style={styles.actionTextCol}>
+                <Text style={styles.actionTitle}>Manage patient's schedule</Text>
+                <Text style={styles.actionSub}>View or change dose times</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.actionRow}
-            onPress={() => navigation?.navigate('ManageLinkedCaregivers')}
-          >
-            <Text style={styles.actionIcon}>👥</Text>
-            <View style={styles.actionTextCol}>
-              <Text style={styles.actionTitle}>Manage linked caregivers</Text>
-              <Text style={styles.actionSub}>Care circle & nurse permissions</Text>
+            <View style={styles.disabledExplanation}>
+              <Text style={styles.disabledExplanationText}>
+                Select an Active patient above to manage their prescriptions and schedule.
+              </Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
-          </TouchableOpacity>
-        </View>
+          </View>
+        ) : (
+          <View style={styles.cardGroup}>
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => selectedPatient && navigation?.navigate('MyPrescriptions', { patientId: selectedPatient.id })}
+            >
+              <Text style={styles.actionIcon}>📜</Text>
+              <View style={styles.actionTextCol}>
+                <Text style={styles.actionTitle}>My Prescriptions</Text>
+                <Text style={styles.actionSub}>View and add prescriptions</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionRow}
+              onPress={() => selectedPatient && navigation?.navigate('ManagePatientSchedule', { patientId: selectedPatient.id })}
+            >
+              <Text style={styles.actionIcon}>📅</Text>
+              <View style={styles.actionTextCol}>
+                <Text style={styles.actionTitle}>Manage patient's schedule</Text>
+                <Text style={styles.actionSub}>View or change dose times</Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <Button
           title="Log out"
@@ -379,6 +534,51 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#E2E8F0',
   },
+  selectedPatientCard: {
+    borderColor: '#0D8F7A',
+    borderWidth: 2,
+    backgroundColor: '#F0FDF9',
+  },
+  patientLinkCard: {
+    marginBottom: 12,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    marginTop: 12,
+    gap: 8,
+  },
+  actionBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  acceptBtn: {
+    backgroundColor: '#0D8F7A',
+  },
+  declineBtn: {
+    backgroundColor: '#FEE2E2',
+  },
+  selectBtn: {
+    marginTop: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#0D8F7A',
+  },
+  selectedBtn: {
+    backgroundColor: '#065F46',
+  },
+  actionBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  selectBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
   avatar: {
     width: 52,
     height: 52,
@@ -419,6 +619,12 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 2,
   },
+  permissionsText: {
+    fontSize: 12,
+    color: '#64748B',
+    marginTop: 4,
+    fontStyle: 'italic',
+  },
   patientPhone: {
     fontSize: 12,
     color: '#0D8F7A',
@@ -447,6 +653,27 @@ const styles = StyleSheet.create({
   emptyPatientSub: {
     fontSize: 13,
     color: '#94A3B8',
+    textAlign: 'center',
+  },
+  disabledCardGroup: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  disabledActionRow: {
+    opacity: 0.5,
+  },
+  disabledExplanation: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#FEF3C7',
+    borderRadius: 8,
+  },
+  disabledExplanationText: {
+    fontSize: 13,
+    color: '#92400E',
     textAlign: 'center',
   },
   editCard: {

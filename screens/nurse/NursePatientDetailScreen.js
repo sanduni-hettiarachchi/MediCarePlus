@@ -14,8 +14,9 @@ import { computeAdherenceStats } from '../../utils/dateUtils';
 const Text = PatientText;
 
 export default function NursePatientDetailScreen({ navigation, route }) {
-  const patient = route?.params?.patient || { name: 'Mrs. Perera', age: '72 y' };
-  const patientId = patient.id || route?.params?.patientId || 'usr-patient-1';
+  const patient = route?.params?.patient || { name: 'Patient' };
+  const patientId = route?.params?.patientId || patient.id;
+  const permissions = route?.params?.permissions || {};
   const nurse = route?.params?.nurse;
   const [careNotes, setCareNotes] = useState([]);
   const [summary, setSummary] = useState({
@@ -24,6 +25,10 @@ export default function NursePatientDetailScreen({ navigation, route }) {
     mostMissedCount: 0,
     dailyStats: [],
   });
+
+  const canViewAdherence = permissions.viewAdherence || permissions.viewSchedule;
+  const canViewCareNotes = permissions.viewCareNotes;
+  const canAddNotes = permissions.addNotes;
 
   const loadCareNotes = () => {
     const list = dbService.getCareNotes(patientId);
@@ -37,13 +42,15 @@ export default function NursePatientDetailScreen({ navigation, route }) {
   }, [patientId]);
 
   useEffect(() => {
-    const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
-      const medicines = dbService.getMedicines(patientId);
-      const stats = computeAdherenceStats(logs, medicines, 7);
-      setSummary(stats);
-    });
-    return () => unsubscribe();
-  }, [patientId]);
+    if (canViewAdherence) {
+      const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
+        const medicines = dbService.getMedicines(patientId);
+        const stats = computeAdherenceStats(logs, medicines, 7);
+        setSummary(stats);
+      });
+      return () => unsubscribe();
+    }
+  }, [patientId, canViewAdherence]);
 
   const [deletedNote, setDeletedNote] = useState(null);
   const [showUndoToast, setShowUndoToast] = useState(false);
@@ -79,49 +86,59 @@ export default function NursePatientDetailScreen({ navigation, route }) {
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <View style={styles.summaryBanner}>
-          <Text style={styles.summaryBannerText}>
-            Adherence {summary.adherencePercent}% this week · Most missed: {summary.mostMissedMedName}
-          </Text>
-        </View>
-
-        <View style={styles.adherenceCard}>
-          <Text style={styles.adherenceLabel}>LAST 7 DAYS ADHERENCE</Text>
-          <Text style={styles.adherenceValue}>{summary.adherencePercent}%</Text>
-
-          {/* 7-Day Bar Chart */}
-          <View style={styles.barChartContainer}>
-            {summary.dailyStats.map((bar, i) => (
-              <View key={i} style={styles.barCol}>
-                <View style={styles.barTrack}>
-                  <View
-                    style={[
-                      styles.barFill,
-                      { height: `${Math.max(bar.percentage, 15)}%` },
-                      bar.percentage < 50 && styles.barFillMissed,
-                    ]}
-                  />
-                </View>
-                <Text style={styles.barDayText}>{bar.dayName}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Section: REPEATEDLY MISSED */}
-        {summary.mostMissedCount > 0 && (
+        {canViewAdherence ? (
           <>
-            <Text style={styles.sectionHeader}>REPEATEDLY MISSED</Text>
-            <View style={styles.missedCard}>
-              <View style={styles.missedRow}>
-                <Text style={styles.missedIcon}>⚠️</Text>
-                <View style={styles.missedCol}>
-                  <Text style={styles.missedMedName}>{summary.mostMissedMedName}</Text>
-                  <Text style={styles.missedMedSub}>{summary.mostMissedCount} missed doses this week</Text>
-                </View>
+            <View style={styles.summaryBanner}>
+              <Text style={styles.summaryBannerText}>
+                Adherence {summary.adherencePercent}% this week · Most missed: {summary.mostMissedMedName}
+              </Text>
+            </View>
+
+            <View style={styles.adherenceCard}>
+              <Text style={styles.adherenceLabel}>LAST 7 DAYS ADHERENCE</Text>
+              <Text style={styles.adherenceValue}>{summary.adherencePercent}%</Text>
+
+              {/* 7-Day Bar Chart */}
+              <View style={styles.barChartContainer}>
+                {summary.dailyStats.map((bar, i) => (
+                  <View key={i} style={styles.barCol}>
+                    <View style={styles.barTrack}>
+                      <View
+                        style={[
+                          styles.barFill,
+                          { height: `${Math.max(bar.percentage, 15)}%` },
+                          bar.percentage < 50 && styles.barFillMissed,
+                        ]}
+                      />
+                    </View>
+                    <Text style={styles.barDayText}>{bar.dayName}</Text>
+                  </View>
+                ))}
               </View>
             </View>
+
+            {/* Section: REPEATEDLY MISSED */}
+            {summary.mostMissedCount > 0 && (
+              <>
+                <Text style={styles.sectionHeader}>REPEATEDLY MISSED</Text>
+                <View style={styles.missedCard}>
+                  <View style={styles.missedRow}>
+                    <Text style={styles.missedIcon}>⚠️</Text>
+                    <View style={styles.missedCol}>
+                      <Text style={styles.missedMedName}>{summary.mostMissedMedName}</Text>
+                      <Text style={styles.missedMedSub}>{summary.mostMissedCount} missed doses this week</Text>
+                    </View>
+                  </View>
+                </View>
+              </>
+            )}
           </>
+        ) : (
+          <View style={styles.permissionBanner}>
+            <Text style={styles.permissionText}>
+              Adherence data is not shared with you.
+            </Text>
+          </View>
         )}
 
         {/* Undo Toast for deleted notes */}
@@ -143,43 +160,59 @@ export default function NursePatientDetailScreen({ navigation, route }) {
             onPress={() => navigation?.navigate('PatientHistory', { patient, nurse })}
             style={styles.actionBtn}
           />
-          <Button
-            title="+ Add Note"
-            colorScheme="blue"
-            onPress={() => navigation?.navigate('AddCareNote', { patient, nurse })}
-            style={styles.actionBtn}
-          />
+          {canAddNotes ? (
+            <Button
+              title="+ Add Note"
+              colorScheme="blue"
+              onPress={() => navigation?.navigate('AddCareNote', { patient, nurse })}
+              style={styles.actionBtn}
+            />
+          ) : (
+            <View style={[styles.actionBtn, styles.disabledBtn]}>
+              <Text style={styles.disabledBtnText}>Add Note</Text>
+            </View>
+          )}
         </View>
 
         {/* Section: RECENT NOTES */}
-        <Text style={styles.sectionHeader}>RECENT NOTES</Text>
+        {canViewCareNotes ? (
+          <>
+            <Text style={styles.sectionHeader}>RECENT NOTES</Text>
 
-        {careNotes.length === 0 ? <Text style={styles.emptyNotes}>No care notes yet.</Text> : null}
-        {careNotes.map((cn) => {
-          const isAuthor = cn.authorId === nurse?.id;
-          return (
-            <View key={cn.id} style={styles.noteCard}>
-              <View style={styles.noteTopRow}>
-                <Text style={styles.noteAuthor}>{cn.authorName || cn.authorRole || 'Care team'}</Text>
-                <Text style={styles.noteDate}>{cn.date || 'Today'}</Text>
-              </View>
-              <Text style={styles.noteText}>{cn.note}</Text>
-              {cn.edited && <Text style={styles.editedLabel}>Edited</Text>}
-              {isAuthor ? (
-                <View style={styles.noteActions}>
-                  <TouchableOpacity onPress={() => navigation?.navigate('EditCareNote', { patient, nurse, existingNote: cn })}>
-                    <Text style={styles.actionLink}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleDeleteNote(cn)}>
-                    <Text style={[styles.actionLink, styles.deleteLink]}>Delete</Text>
-                  </TouchableOpacity>
+            {careNotes.length === 0 ? <Text style={styles.emptyNotes}>No care notes yet.</Text> : null}
+            {careNotes.map((cn) => {
+              const isAuthor = cn.authorId === nurse?.id;
+              return (
+                <View key={cn.id} style={styles.noteCard}>
+                  <View style={styles.noteTopRow}>
+                    <Text style={styles.noteAuthor}>{cn.authorName || cn.authorRole || 'Care team'}</Text>
+                    <Text style={styles.noteDate}>{cn.date || 'Today'}</Text>
+                  </View>
+                  <Text style={styles.noteText}>{cn.note}</Text>
+                  {cn.edited && <Text style={styles.editedLabel}>Edited</Text>}
+                  {isAuthor ? (
+                    <View style={styles.noteActions}>
+                      <TouchableOpacity onPress={() => navigation?.navigate('EditCareNote', { patient, nurse, existingNote: cn })}>
+                        <Text style={styles.actionLink}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleDeleteNote(cn)}>
+                        <Text style={[styles.actionLink, styles.deleteLink]}>Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Text style={styles.readOnlyText}>Only the author can edit this note</Text>
+                  )}
                 </View>
-              ) : (
-                <Text style={styles.readOnlyText}>Only the author can edit this note</Text>
-              )}
-            </View>
-          );
-        })}
+              );
+            })}
+          </>
+        ) : (
+          <View style={styles.permissionBanner}>
+            <Text style={styles.permissionText}>
+              Care notes are not shared with you.
+            </Text>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -304,6 +337,30 @@ const styles = StyleSheet.create({
   },
   actionBtn: {
     flex: 1,
+  },
+  disabledBtn: {
+    flex: 1,
+    backgroundColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  disabledBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#94A3B8',
+  },
+  permissionBanner: {
+    backgroundColor: '#F1F5F9',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  permissionText: {
+    fontSize: 13,
+    color: '#64748B',
+    textAlign: 'center',
   },
   noteCard: {
     backgroundColor: '#F8FAFC',

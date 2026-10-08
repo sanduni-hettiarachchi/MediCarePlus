@@ -5,20 +5,22 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { collection, query, where, orderBy, onSnapshot, updateDoc, doc } from 'firebase/firestore';
-import Button from '../../components/Button';
+import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
 import Header from '../../components/Header';
 import dbService from '../../services/db';
 import Text from '../../components/PatientText';
 
-export default function PatientCareNotesScreen({ navigation, route, currentUser }) {
-  const patientId = currentUser?.id;
+export default function CaregiverCareNotesScreen({ navigation, route, currentUser }) {
+  const selectedPatientLink = route?.params?.selectedPatientLink;
+  const patientId = selectedPatientLink?.patientId;
+  const permissions = selectedPatientLink?.permissions || {};
+  const canViewCareNotes = permissions.viewCareNotes;
   const [careNotes, setCareNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
-    if (!patientId) {
+    if (!patientId || !canViewCareNotes) {
       setLoading(false);
       return;
     }
@@ -26,7 +28,7 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
     setLoading(true);
     const firestoreDb = dbService.getFirestoreDb?.();
     if (!firestoreDb) {
-      console.error('[PatientCareNotesScreen] Firestore not available');
+      console.error('[CaregiverCareNotesScreen] Firestore not available');
       setLoading(false);
       return;
     }
@@ -43,12 +45,12 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
       setCareNotes(notes);
       setLoading(false);
     }, (err) => {
-      console.error('[PatientCareNotesScreen] Subscription error:', err.code, err.message);
+      console.error('[CaregiverCareNotesScreen] Subscription error:', err.code, err.message);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [patientId]);
+  }, [patientId, canViewCareNotes]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -59,7 +61,7 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
     <View style={styles.container}>
       <Header
         title="Care notes"
-        subtitle="Notes from your care team"
+        subtitle="Notes from the care team"
         onBack={() => navigation?.goBack()}
       />
 
@@ -70,7 +72,17 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
       >
-        {loading ? (
+        {!canViewCareNotes ? (
+          <View style={styles.centerContainer}>
+            <View style={styles.permissionCircle}>
+              <Text style={styles.permissionIcon}>🔒</Text>
+            </View>
+            <Text style={styles.permissionTitle}>Not shared by the patient</Text>
+            <Text style={styles.permissionSubtitle}>
+              The patient has not shared care notes with you
+            </Text>
+          </View>
+        ) : loading ? (
           <View style={styles.centerContainer}>
             <Text style={styles.loadingText}>Loading...</Text>
           </View>
@@ -81,7 +93,7 @@ export default function PatientCareNotesScreen({ navigation, route, currentUser 
             </View>
             <Text style={styles.emptyTitle}>No care notes yet</Text>
             <Text style={styles.emptySubtitle}>
-              Your care team can share notes with you here
+              The care team can share notes here
             </Text>
           </View>
         ) : (
@@ -131,6 +143,29 @@ const styles = StyleSheet.create({
   loadingText: {
     fontSize: 15,
     color: '#94A3B8',
+  },
+  permissionCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  permissionIcon: {
+    fontSize: 36,
+  },
+  permissionTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+    marginBottom: 6,
+  },
+  permissionSubtitle: {
+    fontSize: 14,
+    color: '#64748B',
+    textAlign: 'center',
   },
   emptyCircle: {
     width: 80,

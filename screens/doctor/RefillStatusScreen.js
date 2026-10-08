@@ -13,7 +13,15 @@ import dbService from '../../services/db';
 
 export default function RefillStatusScreen({ navigation, route }) {
   const doctor = route?.params?.doctor;
-  const patientId = route?.params?.patientId || 'usr-patient-1';
+  const patientId = route?.params?.patientId;
+
+  if (!patientId) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>Patient ID is required</Text>
+      </View>
+    );
+  }
   const [medicines, setMedicines] = useState([]);
   const [refillRequests, setRefillRequests] = useState([]);
 
