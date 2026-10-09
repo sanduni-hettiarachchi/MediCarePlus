@@ -11,7 +11,7 @@ import Button from '../../components/Button';
 import Text from '../../components/PatientText';
 
 export default function DoctorPatientsScreen({ navigation, route, currentUser }) {
-  const doctor = route?.params?.doctor || { name: 'Dr. K. Silva' };
+  const doctor = route?.params?.doctor || currentUser || { name: 'Dr. K. Silva' };
   const [careLinks, setCareLinks] = useState([]);
   const [patientDataMap, setPatientDataMap] = useState({});
   const [loading, setLoading] = useState(true);
@@ -37,20 +37,22 @@ export default function DoctorPatientsScreen({ navigation, route, currentUser })
       where('memberId', '==', doctorId)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const links = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       console.log('[DoctorPatientsScreen] Found', links.length, 'care_links');
       setCareLinks(links);
 
       // Fetch patient data for each link
-      const patientMap = {};
-      links.forEach((link) => {
-        if (link.patientId && !patientMap[link.patientId]) {
-          const patientDoc = require('../../services/db').getUserById(link.patientId);
-          patientMap[link.patientId] = patientDoc || { id: link.patientId, name: 'Patient' };
+      const patientEntries = await Promise.all(links.map(async (link) => {
+        if (!link.patientId) return null;
+        try {
+          const patient = await require('../../services/db').default.getUserProfileById(link.patientId);
+          return [link.patientId, patient || { id: link.patientId, name: 'Patient' }];
+        } catch (profileError) {
+          return [link.patientId, { id: link.patientId, name: 'Patient' }];
         }
-      });
-      setPatientDataMap(patientMap);
+      }));
+      setPatientDataMap(Object.fromEntries(patientEntries.filter(Boolean)));
       setLoading(false);
     }, (err) => {
       console.error('[DoctorPatientsScreen] care_links error:', err.code, err.message);
@@ -94,7 +96,7 @@ export default function DoctorPatientsScreen({ navigation, route, currentUser })
 
   const handleSelectPatient = (link) => {
     const patient = patientDataMap[link.patientId] || { id: link.patientId, name: 'Patient' };
-    navigation?.navigate('DoctorPatientHub', { patient, doctor, currentUser });
+    navigation?.navigate('HomeVisitSummary', { patient, patientId: link.patientId, doctor: currentUser || doctor });
   };
 
   return (

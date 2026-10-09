@@ -75,15 +75,18 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && (
         request.resource.data.patientId == request.auth.uid ||
-        hasPerm(request.resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(request.resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(request.resource.data.patientId, request.auth.uid))
       );
       allow update: if isAuthenticated() && (
         resource.data.patientId == request.auth.uid ||
-        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
       allow delete: if isAuthenticated() && (
         resource.data.patientId == request.auth.uid ||
-        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
     }
     
@@ -97,15 +100,18 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && (
         request.resource.data.patientId == request.auth.uid ||
-        hasPerm(request.resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(request.resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(request.resource.data.patientId, request.auth.uid))
       );
       allow update: if isAuthenticated() && (
         resource.data.patientId == request.auth.uid ||
-        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
       allow delete: if isAuthenticated() && (
         resource.data.patientId == request.auth.uid ||
-        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
     }
     
@@ -189,14 +195,16 @@ service cloud.firestore {
     match /refill_requests/{requestId} {
       allow read: if isAuthenticated() && (
         isOwner(resource.data.patientId) ||
-        isPharmacist() ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid)) ||
         isActiveCareLink(resource.data.patientId, request.auth.uid)
       );
       allow create: if isAuthenticated() && (
-        isOwner(resource.data.patientId) || isPharmacist()
+        request.resource.data.patientId == request.auth.uid ||
+        (isPharmacist() && isActiveCareLink(request.resource.data.patientId, request.auth.uid))
       );
       allow update: if isAuthenticated() && (
-        isOwner(resource.data.patientId) || isPharmacist()
+        resource.data.patientId == request.auth.uid ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
     }
     
@@ -233,15 +241,18 @@ service cloud.firestore {
       );
       allow create: if isAuthenticated() && (
         request.resource.data.patientId == request.auth.uid ||
-        hasPerm(request.resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(request.resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(request.resource.data.patientId, request.auth.uid))
       );
       allow update: if isAuthenticated() && (
         resource.data.patientId == request.auth.uid ||
-        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
       allow delete: if isAuthenticated() && (
         resource.data.patientId == request.auth.uid ||
-        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule')
+        hasPerm(resource.data.patientId, request.auth.uid, 'editSchedule') ||
+        (isPharmacist() && isActiveCareLink(resource.data.patientId, request.auth.uid))
       );
     }
     
@@ -253,7 +264,10 @@ service cloud.firestore {
         isActiveCareLink(resource.data.patientId, request.auth.uid) ||
         isDoctor() || isNurse()
       );
-      allow create: if isAuthenticated() && request.resource.data.patientId == request.auth.uid;
+      allow create: if isAuthenticated() && (
+        request.resource.data.patientId == request.auth.uid ||
+        (isDoctor() && isActiveCareLink(request.resource.data.patientId, request.auth.uid))
+      );
       allow update: if isAuthenticated() && resource.data.patientId == request.auth.uid;
       allow delete: if isAuthenticated() && resource.data.patientId == request.auth.uid;
     }

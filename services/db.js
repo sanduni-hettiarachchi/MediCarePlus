@@ -122,6 +122,10 @@ export function getActivePatientId(currentUser) {
 }
 
 export const dbService = {
+  getFirestoreDb() {
+    return getFirestoreDb();
+  },
+
   // FIREBASE AUTH & USER PROFILE STORE
   async signInFirebase(email, password, role) {
     const auth = getFirebaseAuth();
@@ -219,6 +223,15 @@ export const dbService = {
   getUserById(id) {
     return localCache.users.find((u) => u.id === id) || null;
   },
+  async getUserProfileById(id) {
+    if (!id) return null;
+    const firestoreDb = getFirestoreDb();
+    if (firestoreDb) {
+      const snapshot = await getDoc(doc(firestoreDb, 'users', id));
+      if (snapshot.exists()) return { id: snapshot.id, ...snapshot.data() };
+    }
+    return this.getUserById(id);
+  },
   findUserByCredentials(emailOrPhone, password, role) {
     return localCache.users.find((u) => {
       const matchIdentity = u.email === emailOrPhone || u.phone === emailOrPhone;
@@ -300,7 +313,7 @@ export const dbService = {
   getReminderTimes(medicineId) {
     return localCache.reminder_times.filter((rt) => rt.medicineId === medicineId);
   },
-  addMedicine(medData, timesList = []) {
+  addMedicine(medData, timesList = [], options = {}) {
     const medId = `med-${Date.now()}`;
     const patientId = medData.patientId;
     if (!patientId) {
@@ -318,7 +331,7 @@ export const dbService = {
       deletedAt: null,
       ...medData,
     };
-    const firestoreDb = getFirestoreDb();
+    const firestoreDb = options.localOnly ? null : getFirestoreDb();
     if (firestoreDb) newMed.firestoreId = doc(collection(firestoreDb, 'medicines')).id;
 
     // Create one reminder_times document per time, with enabled: true, patientId, medicineId, time
@@ -339,7 +352,7 @@ export const dbService = {
     persistLocalCache();
 
     // Sync to refill_summary
-    this.syncRefillSummary(newMed);
+    this.syncRefillSummary(newMed, options);
 
     // Save to Firestore with transaction if available
     if (firestoreDb) {
@@ -370,7 +383,7 @@ export const dbService = {
 
     return { medicine: newMed, times: timeEntries };
   },
-  async updateMedicine(id, updates, timesList = null) {
+  async updateMedicine(id, updates, timesList = null, options = {}) {
     const idx = localCache.medicines.findIndex((m) => m.id === id);
     if (idx !== -1) {
       console.log('[dbService.updateMedicine] Updating medicine:', id, 'patientId:', localCache.medicines[idx].patientId);
@@ -392,7 +405,7 @@ export const dbService = {
       }
       persistLocalCache();
 
-      const firestoreDb = getFirestoreDb();
+      const firestoreDb = options.localOnly ? null : getFirestoreDb();
       if (firestoreDb) {
         try {
           console.log('[dbService.updateMedicine] Update: medicines/', localCache.medicines[idx].firestoreId || id);
@@ -433,13 +446,13 @@ export const dbService = {
       }
 
       // Sync to refill_summary
-      await this.syncRefillSummary(localCache.medicines[idx]);
+      await this.syncRefillSummary(localCache.medicines[idx], options);
 
       return localCache.medicines[idx];
     }
     return null;
   },
-  async deleteMedicine(id, targetPatientId = null) {
+  async deleteMedicine(id, targetPatientId = null, options = {}) {
     const deletedMed = localCache.medicines.find((m) => m.id === id);
     const deletedTimes = localCache.reminder_times.filter((rt) => rt.medicineId === id);
     const deletedDoseLogs = localCache.dose_logs.filter((dl) => dl.medicineId === id);
@@ -461,7 +474,7 @@ export const dbService = {
     }
     persistLocalCache();
 
-    const firestoreDb = getFirestoreDb();
+    const firestoreDb = options.localOnly ? null : getFirestoreDb();
     if (firestoreDb) {
       try {
         const batch = writeBatch(firestoreDb);
@@ -905,7 +918,7 @@ export const dbService = {
     return () => {};
   },
 
-  subscribeToRefillRequests(patientId, callback) {
+  subscribeToRefillRequests(patientId, callback, onError) {
     const firestoreDb = getFirestoreDb();
     if (firestoreDb) {
       const q = query(collection(firestoreDb, 'refill_requests'), where('patientId', '==', patientId));
@@ -915,6 +928,9 @@ export const dbService = {
           .filter((request) => request.patientId !== patientId)
           .concat(reqs);
         callback(reqs);
+      }, (error) => {
+        onError?.(error);
+        callback(this.getRefillRequests(patientId));
       });
     }
     callback(this.getRefillRequests(patientId));
@@ -1379,13 +1395,14 @@ export const dbService = {
       console.warn('[DB] addCareNote: patientId is required');
       return null;
     }
+    const noteText = noteData.text || noteData.note || '';
     const newNote = {
       id: `cn-${Date.now()}`,
       patientId: noteData.patientId,
       authorId: noteData.authorId,
       authorName: noteData.authorName,
       authorRole: noteData.authorRole || 'nurse',
-      text: noteData.text || noteData.note,
+      text: noteText,
       visibleToPatient: noteData.visibleToPatient !== undefined ? noteData.visibleToPatient : true,
       createdAt: Date.now(),
       editedAt: null,
@@ -1699,7 +1716,7 @@ export const dbService = {
     callback(this.getRefillSummary(patientId));
     return () => {};
   },
-  async syncRefillSummary(medicine) {
+  async syncRefillSummary(medicine, options = {}) {
     const summaryId = `rs-${medicine.id}`;
     const summary = {
       id: summaryId,
@@ -1711,7 +1728,7 @@ export const dbService = {
       status: medicine.refillStatus || 'OK',
       updatedAt: Date.now(),
     };
-    const firestoreDb = getFirestoreDb();
+    const firestoreDb = options.localOnly ? null : getFirestoreDb();
     if (firestoreDb) {
       await setDoc(doc(firestoreDb, 'refill_summary', summaryId), {
         ...summary,
@@ -1730,29 +1747,38 @@ export const dbService = {
       await deleteDoc(doc(firestoreDb, 'refill_summary', summaryId));
     }
   },
-  async markRefilled(medicineId, pharmacistId, pharmacistName) {
-    const summaryId = `rs-${medicineId}`;
-    const summary = localCache.refill_summary.find((rs) => rs.id === summaryId);
-    if (summary) {
+  async markRefilled(medicineId, pharmacistId, pharmacistName, options = {}) {
+    const medicine = this.getMedicineById(medicineId);
+    if (!medicine) return false;
+    await this.updateMedicine(medicineId, {
+      stockDays: 30,
+      refillStatus: 'OK',
+      lastRefilledBy: pharmacistId,
+      lastRefilledByName: pharmacistName,
+      lastRefilledAt: Date.now(),
+    }, null, options);
+
+    const pendingRequests = localCache.refill_requests.filter((request) =>
+      request.medicineId === medicineId && ['requested', 'notified'].includes(request.status)
+    );
+    for (const request of pendingRequests) {
       const updates = {
-        stockDays: 30,
-        status: 'OK',
+        status: 'refilled',
         refilledBy: pharmacistId,
         refilledByName: pharmacistName,
         refilledAt: Date.now(),
-        updatedAt: Date.now(),
       };
-      localCache.refill_summary = localCache.refill_summary.map((rs) => rs.id === summaryId ? { ...rs, ...updates } : rs);
-      persistLocalCache();
-      const firestoreDb = getFirestoreDb();
+      Object.assign(request, updates);
+      const firestoreDb = options.localOnly ? null : getFirestoreDb();
       if (firestoreDb) {
-        await updateDoc(doc(firestoreDb, 'refill_summary', summaryId), {
+        await updateDoc(doc(firestoreDb, 'refill_requests', request.id), {
           ...updates,
           refilledAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
         });
       }
     }
+    persistLocalCache();
+    return true;
   },
 };
 

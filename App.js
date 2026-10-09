@@ -48,6 +48,8 @@ import RefillNotificationScreen from './screens/caregiver/RefillNotificationScre
 import DoctorProfileScreen from './screens/doctor/DoctorProfileScreen';
 import DoctorSignInScreen from './screens/doctor/DoctorSignInScreen';
 import DoctorPatientsScreen from './screens/doctor/DoctorPatientsScreen';
+import PrescriptionScreen from './screens/doctor/Prescription/PrescriptionScreen';
+import DoctorNotesScreen from './screens/doctor/DoctorNotes/DoctorNotesScreen';
 import HealthReportScreen from './screens/doctor/HealthReportScreen';
 import HomeVisitSummaryScreen from './screens/doctor/HomeVisitSummaryScreen';
 import PatientVisitsScreen from './screens/doctor/PatientVisitsScreen';
@@ -247,7 +249,7 @@ export default function App() {
       case 'Welcome': return <WelcomeScreen navigation={navigation} />;
       case 'Landing': return <LandingScreen navigation={navigation} onSelectRole={setUserRole} />;
       case 'Login': return <LoginScreen navigation={navigation} onLoginSuccess={(user) => { setCurrentUser(user); setUserRole(user.role); setUserPreferences((current) => ({ ...current, language: user.language === 'si' ? 'si' : 'en', largeText: Boolean(user.largeText), highContrast: Boolean(user.highContrast), voiceReminders: user.voiceReminders !== false })); setCurrentScreen(user.role === 'caregiver' ? 'CaregiverProfiles' : 'TodaysSchedule'); }} />;
-      case 'SignUp': return <SignUpScreen navigation={navigation} route={route} onSignUpSuccess={(user) => { setCurrentUser(user); setUserRole(user.role); setCurrentScreen(user.role === 'caregiver' ? 'CaregiverProfiles' : 'TodaysSchedule'); }} />;
+      case 'SignUp': return <SignUpScreen navigation={navigation} route={route} onSignUpSuccess={(user) => { setCurrentUser(user); setUserRole(user.role); setCurrentScreen(user.role === 'caregiver' ? 'CaregiverProfiles' : user.role === 'doctor' ? 'DoctorPatients' : user.role === 'pharmacist' ? 'PharmacistPatients' : user.role === 'nurse' ? 'NurseMyPatients' : 'TodaysSchedule'); }} />;
       case 'SignedOut': return <SignedOutScreen navigation={navigation} />;
       case 'TodaysSchedule': return <TodaysScheduleScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} currentUser={currentUser} isOffline={isOffline} onRetryOffline={retryConnection} />;
       case 'DoseScreen': return <DoseScreen navigation={navigation} route={route} currentUser={currentUser} />;
@@ -279,9 +281,11 @@ export default function App() {
       case 'RefillNotification': return <RefillNotificationScreen navigation={navigation} route={route} onNavigateTab={handleNavigateTab} hasAlertBadge={hasUnhandledAlert} />;
       case 'CaregiverInsights': return <CaregiverInsightsScreen navigation={navigation} onNavigateTab={handleNavigateTab} userPreferences={userPreferences} hasAlertBadge={hasUnhandledAlert} />;
       case 'AdherenceCalendar': return <AdherenceCalendarScreen navigation={navigation} />;
-      case 'DoctorSignIn': return <DoctorSignInScreen navigation={navigation} onDoctorSignIn={(professional) => { setUserRole(professional.role); navigation.navigate('DoctorPatients', { doctor: professional }); }} />;
+      case 'DoctorSignIn': return <DoctorSignInScreen navigation={navigation} onDoctorSignIn={(professional) => { setCurrentUser(professional); setUserRole(professional.role); navigation.navigate(professional.role === 'pharmacist' ? 'PharmacistPatients' : 'DoctorPatients', { doctor: professional, pharmacist: professional }); }} />;
       case 'DoctorPatients': return <DoctorPatientsScreen navigation={navigation} route={route} currentUser={currentUser} />;
-      case 'HomeVisitSummary': return <HomeVisitSummaryScreen navigation={navigation} route={route} />;
+      case 'HomeVisitSummary': return <HomeVisitSummaryScreen navigation={navigation} route={route} currentUser={currentUser} />;
+      case 'DoctorPrescription': return <PrescriptionScreen navigation={navigation} route={route} onBack={() => navigation?.goBack()} />;
+      case 'DoctorNotes': return <DoctorNotesScreen navigation={navigation} route={route} />;
       case 'HealthReport': return <HealthReportScreen navigation={navigation} route={route} />;
       case 'PatientVisits': return <PatientVisitsScreen navigation={navigation} route={route} />;
       case 'PrescriptionsRefills': return <PrescriptionsRefillsScreen navigation={navigation} route={route} />;
@@ -297,7 +301,7 @@ export default function App() {
       case 'NurseProfile': return <NurseProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
       case 'NursePendingRequests': return <NursePendingRequestsScreen navigation={navigation} currentUser={currentUser} />;
       case 'PharmacistPatients': return <PharmacistPatientsScreen navigation={navigation} route={route} currentUser={currentUser} />;
-      case 'PharmacistPatientMedicines': return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} />;
+      case 'PharmacistPatientMedicines': return <PharmacistPatientMedicinesScreen navigation={navigation} route={route} currentUser={currentUser} />;
       case 'PharmacistProfile': return <PharmacistProfileScreen navigation={navigation} route={route} onLogout={handleLogout} />;
       case 'RefillSummary': return <RefillSummaryScreen navigation={navigation} route={route} />;
       default: return <SplashScreen navigation={navigation} />;

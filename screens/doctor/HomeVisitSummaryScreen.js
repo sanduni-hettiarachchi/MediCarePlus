@@ -15,87 +15,51 @@ import PatientText from '../../components/PatientText';
 
 const Text = PatientText;
 
-export default function HomeVisitSummaryScreen({ navigation, route }) {
-  const doctor = route?.params?.doctor || { name: 'Dr. K. Silva', slmcNumber: '12345' };
-  const patientId = route?.params?.patientId;
-
-  if (!patientId) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Patient ID is required</Text>
-      </View>
-    );
-  }
-
-  const [careNotes, setCareNotes] = useState([]);
-  const [summary, setSummary] = useState({
-    adherencePercent: 0,
-    mostMissedMedName: '—',
-    mostMissedCount: 0,
-    dailyStats: [],
-  });
-
-  const loadCareNotes = () => {
-    const list = dbService.getCareNotes(patientId);
-    // Sort by timestamp descending (newest first)
-    const sorted = list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    setCareNotes(sorted);
-  };
-
-  useEffect(() => {
-    loadCareNotes();
-  }, [patientId]);
-
-  useEffect(() => {
-    const unsubscribe = dbService.subscribeToDoseLogs(patientId, (logs) => {
-      const medicines = dbService.getMedicines(patientId);
-      const stats = computeAdherenceStats(logs, medicines, 7);
-      setSummary(stats);
-    });
-    return () => unsubscribe();
-  }, [patientId]);
-
-  const [deletedNote, setDeletedNote] = useState(null);
-  const [showUndoToast, setShowUndoToast] = useState(false);
-
-  const handleDeleteNote = async (note) => {
-    setDeletedNote(note);
-    dbService.deleteCareNote(note.id);
-    setShowUndoToast(true);
-    loadCareNotes();
-    
-    setTimeout(() => {
-      setShowUndoToast(false);
-      setDeletedNote(null);
-    }, 6000);
-  };
-
-  const handleUndoDelete = () => {
-    if (deletedNote) {
-      dbService.addCareNote(deletedNote);
-      setDeletedNote(null);
-      setShowUndoToast(false);
-      loadCareNotes();
-    }
-  };
-
-  const handleAddCareNote = () => {
-    navigation?.navigate('AddCareNote', { patient: { id: patientId, name: 'Patient' }, doctor, currentUser: { id: doctor.id } });
-  };
-
+export default function HomeVisitSummaryScreen({ navigation, route, currentUser }) {
+  const doctor = route?.params?.doctor || currentUser || { name: 'Dr. K. Silva', slmcNumber: '12345' };
+  const patientId = route?.params?.patientId || 'usr-patient-1';
   const [activeTab, setActiveTab] = useState('Home visit');
 
+  const [caregiverNotes, setCaregiverNotes] = useState([]);
+  const [summary, setSummary] = useState({ adherence: 0, mostMissedMedicine: '—', mostMissedTimeOfDay: '—' });
+  const [patientSummary] = useState({
+    name: 'Mrs. Perera',
+    age: 58,
+    bmi: '24.2',
+    bmiCategory: 'Within recommended range',
+    conditions: 'Diabetes, Hypertension',
+    allergies: 'None recorded',
+    latestVitals: 'Blood pressure 120/80 mmHg',
+  });
+  const [priorDoctorEntries] = useState([
+    { doctor: 'Dr. Silva', medicine: 'Metformin', date: 'Jan 2026', note: 'Continue current dose and monitor fasting glucose.' },
+    { doctor: 'Dr. Fernando', medicine: 'Aspirin', date: 'Jul 2026', note: 'Low-dose aspirin maintained for cardiovascular protection.' },
+    { doctor: 'Dr. Perera', medicine: 'Atorvastatin', date: 'Sep 2026', note: 'Cholesterol control reviewed; continue current plan.' },
+  ]);
+  const [showNoteModal, setShowNoteModal] = useState(false);
   const [counsellingText, setCounsellingText] = useState('');
   const [shareWithPatient, setShareWithPatient] = useState(true);
-  const [showNoteModal, setShowNoteModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+
+  const loadData = () => {
+    const notes = dbService.getCareNotes(patientId);
+    setCaregiverNotes(notes);
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [patientId]);
+
+  useEffect(() => dbService.subscribeToDoseLogs(patientId, (logs) => {
+    setSummary(dbService.getAdherenceSummary(patientId, logs));
+  }), [patientId]);
 
   const handleSaveCounsellingNote = () => {
     if (!counsellingText.trim()) return;
 
     dbService.addCareNote({
       patientId,
-      authorId: doctor.id,
+      authorId: doctor.id || doctor.uid || 'usr-doctor-1',
       authorName: doctor.name || 'Dr. K. Silva',
       authorRole: 'Doctor',
       note: counsellingText.trim(),
@@ -106,7 +70,7 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
     setShareWithPatient(true);
     setShowNoteModal(false);
     setSuccessMsg('✓ Counselling note logged successfully!');
-    loadCareNotes();
+    loadData();
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
@@ -114,7 +78,7 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
     <View style={styles.container}>
       <ClinicianTopBar
         title="Home visit summary"
-        subtitle="Mrs. Perera · read-only access"
+        subtitle={`${route?.params?.patient?.name || 'Patient'} · clinical record`}
         onProfilePress={() => navigation?.navigate('DoctorProfile', { doctor })}
         onLogoutPress={() => authService.logout(navigation)}
       />
@@ -139,7 +103,7 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
           style={[styles.tabBtn, activeTab === 'Patient visits' && styles.selectedTabBtn]}
           onPress={() => {
             setActiveTab('Patient visits');
-            navigation?.navigate('PatientVisits', { doctor });
+            navigation?.navigate('PatientVisits', { doctor, patientId });
           }}
         >
           <Text style={[styles.tabText, activeTab === 'Patient visits' && styles.selectedTabText]}>
@@ -151,7 +115,7 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
           style={[styles.tabBtn, activeTab === 'Refill status' && styles.selectedTabBtn]}
           onPress={() => {
             setActiveTab('Refill status');
-            navigation?.navigate('RefillStatus', { doctor });
+            navigation?.navigate('RefillStatus', { doctor, patientId });
           }}
         >
           <Text style={[styles.tabText, activeTab === 'Refill status' && styles.selectedTabText]}>
@@ -166,6 +130,29 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
             <Text style={styles.successText}>{successMsg}</Text>
           </View>
         ) : null}
+
+        <Text style={styles.sectionHeader}>PATIENT SUMMARY</Text>
+        <View style={styles.missedCard}>
+          <Text style={styles.patientSummaryLine}>Age · {patientSummary.age}</Text>
+          <Text style={styles.patientSummaryLine}>BMI · {patientSummary.bmi} ({patientSummary.bmiCategory})</Text>
+          <Text style={styles.patientSummaryLine}>Conditions · {patientSummary.conditions}</Text>
+          <Text style={styles.patientSummaryLine}>Allergies · {patientSummary.allergies}</Text>
+          <Text style={styles.patientSummaryLine}>Latest vitals · {patientSummary.latestVitals}</Text>
+        </View>
+
+        <Text style={styles.sectionHeader}>PREVIOUS DOCTOR MEDICINES</Text>
+        <View style={styles.missedCard}>
+          {priorDoctorEntries.map((entry) => (
+            <View key={`${entry.doctor}-${entry.date}-${entry.medicine}`} style={styles.historyRow}>
+              <View style={styles.historyHeaderRow}>
+                <Text style={styles.historyDoctor}>{entry.doctor}</Text>
+                <Text style={styles.historyDate}>{entry.date}</Text>
+              </View>
+              <Text style={styles.historyMedicine}>{entry.medicine}</Text>
+              <Text style={styles.historyNote}>{entry.note}</Text>
+            </View>
+          ))}
+        </View>
 
         {/* Section 1: DOSES MISSED (R View missed doses) */}
         <Text style={styles.sectionHeader}>DOSES MISSED</Text>
@@ -201,6 +188,19 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
 
         {/* Action Button: C Log counselling note */}
         <Button
+          title="Add prescription"
+          onPress={() => navigation?.navigate('DoctorPrescription', { doctor, patientId })}
+          style={styles.logNoteBtn}
+        />
+
+        <Button
+          title="Add doctor note"
+          onPress={() => navigation?.navigate('DoctorNotes', { doctor, patientId })}
+          variant="outline"
+          style={styles.healthReportBtn}
+        />
+
+        <Button
           title="Log counselling note"
           onPress={() => setShowNoteModal(true)}
           style={styles.logNoteBtn}
@@ -210,7 +210,7 @@ export default function HomeVisitSummaryScreen({ navigation, route }) {
         <Button
           title="View Full Health Report"
           variant="outline"
-          onPress={() => navigation?.navigate('HealthReport', { doctor })}
+          onPress={() => navigation?.navigate('HealthReport', { doctor, patientId })}
           style={styles.healthReportBtn}
         />
       </ScrollView>
@@ -291,6 +291,44 @@ const styles = StyleSheet.create({
     color: '#4B5563',
     fontSize: 14,
     marginBottom: 12,
+  },
+  patientSummaryLine: {
+    color: '#334155',
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  historyRow: {
+    borderBottomWidth: 1,
+    borderBottomColor: '#E2E8F0',
+    paddingBottom: 10,
+    marginBottom: 10,
+  },
+  historyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  historyDoctor: {
+    color: '#0F172A',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  historyDate: {
+    color: '#64748B',
+    fontSize: 12,
+  },
+  historyMedicine: {
+    color: '#0D8F7A',
+    fontSize: 15,
+    fontWeight: '700',
+    marginBottom: 4,
+  },
+  historyNote: {
+    color: '#475569',
+    fontSize: 13,
+    lineHeight: 18,
   },
   tabsRow: {
     flexDirection: 'row',

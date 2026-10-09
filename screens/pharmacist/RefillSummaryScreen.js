@@ -8,37 +8,31 @@ import {
 } from 'react-native';
 import Button from '../../components/Button';
 import ClinicianTopBar from '../../components/ClinicianTopBar';
+import authService from '../../services/authService';
 import dbService from '../../services/db';
 
 export default function RefillSummaryScreen({ navigation, route }) {
   const pharmacist = route?.params?.pharmacist || { name: 'Mr. Jayasuriya', role: 'pharmacist' };
-  const patientId = route?.params?.patientId;
-
-  if (!patientId) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.errorText}>Patient ID is required</Text>
-      </View>
-    );
-  }
+  const patientId = route?.params?.patientId || 'usr-patient-1';
   const patientName = route?.params?.patientName || 'Mrs. Perera';
   
   const [medicines, setMedicines] = useState([]);
   const [filter, setFilter] = useState('all'); // 'all' or 'needs-refill'
   
   useEffect(() => {
-    const meds = dbService.getMedicines(patientId);
-    setMedicines(meds.filter(m => !m.deleted));
+    const stopMedicines = dbService.subscribeToMedicines(patientId, setMedicines);
+    return () => stopMedicines?.();
   }, [patientId]);
 
+  const needsRefill = (medicine) => Number(medicine.stockDays ?? 30) <= 7 || (medicine.refillStatus && medicine.refillStatus !== 'OK');
   const filteredMedicines = filter === 'needs-refill' 
-    ? medicines.filter(m => m.refillStatus !== 'OK')
+    ? medicines.filter(needsRefill)
     : medicines;
 
-  const needsRefillCount = medicines.filter(m => m.refillStatus !== 'OK').length;
+  const needsRefillCount = medicines.filter(needsRefill).length;
 
   const getStockStatus = (medicine) => {
-    const daysLeft = medicine.stockDays || 30;
+    const daysLeft = Number(medicine.stockDays ?? 30);
     if (daysLeft <= 0) return { label: 'Out of stock', color: '#EF4444', bgColor: '#FEE2E2' };
     if (daysLeft <= 7) return { label: 'Refill now', color: '#DC2626', bgColor: '#FEE2E2' };
     if (daysLeft <= 14) return { label: 'Refill soon', color: '#D97706', bgColor: '#FEF3C7' };
@@ -46,12 +40,8 @@ export default function RefillSummaryScreen({ navigation, route }) {
   };
 
   const handleMarkRefilled = async (medicine) => {
-    await dbService.updateMedicine(medicine.id, { 
-      refillStatus: 'OK',
-      stockDays: 30 
-    });
-    const updated = dbService.getMedicines(patientId).filter(m => !m.deleted);
-    setMedicines(updated);
+    await dbService.markRefilled(medicine.id, pharmacist.id || 'usr-pharmacist-1', pharmacist.name || 'Pharmacist');
+    setMedicines(dbService.getMedicines(patientId));
   };
 
   return (
@@ -60,7 +50,7 @@ export default function RefillSummaryScreen({ navigation, route }) {
         title="Refill Summary"
         subtitle={patientName}
         onProfilePress={() => navigation?.navigate('PharmacistProfile', { pharmacist })}
-        onLogoutPress={() => {}}
+        onLogoutPress={() => authService.logout(navigation)}
       />
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
@@ -71,6 +61,11 @@ export default function RefillSummaryScreen({ navigation, route }) {
             {needsRefillCount} medicine{needsRefillCount !== 1 ? 's' : ''} need{needsRefillCount === 1 ? 's' : ''} a refill
           </Text>
         </View>
+        <Button
+          title="Manage medicines"
+          onPress={() => navigation?.navigate('PharmacistPatientMedicines', { pharmacist, patientId, patientName })}
+          style={styles.manageBtn}
+        />
 
         {/* Filter Tabs */}
         <View style={styles.filterRow}>
@@ -162,6 +157,9 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '800',
     color: '#0F172A',
+  },
+  manageBtn: {
+    marginBottom: 18,
   },
   filterRow: {
     flexDirection: 'row',
